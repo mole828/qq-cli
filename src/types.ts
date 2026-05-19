@@ -1,0 +1,73 @@
+export interface OneBotMessageEvent {
+  time: number;
+  self_id: number;
+  post_type: "message";
+  message_type: "private" | "group";
+  sub_type: string;
+  message_id: number;
+  user_id: number;
+  message: MessageSegment[];
+  raw_message: string;
+  font: number;
+  sender: Sender;
+  group_id?: number;
+  anonymous?: AnonymousInfo | null;
+  message_seq?: number;
+}
+
+export interface Sender {
+  user_id: number;
+  nickname: string;
+  sex?: string;
+  age?: number;
+  card?: string;
+  area?: string;
+  level?: string;
+  role?: string;
+  title?: string;
+}
+
+export interface AnonymousInfo {
+  id: number;
+  name: string;
+  flag: string;
+}
+
+export interface MessageSegment {
+  type: "text" | "image" | "record" | "video" | "at" | "face" | "reply" | "forward" | string;
+  data: Record<string, string>;
+}
+
+export interface OneBotApiRequest {
+  action: string;
+  params?: Record<string, unknown>;
+  echo?: string;
+}
+
+export interface OneBotApiResponse {
+  status: "ok" | "failed" | "async";
+  retcode: number;
+  data: unknown;
+  echo?: string;
+}
+
+export interface Contact {
+  id: number;
+  name: string;
+  type: "friend" | "group";
+  group_id?: number;
+  remark?: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  contactId: number;
+  chatType: "private" | "group";
+  senderId: number;
+  senderName: string;
+  content: string;
+  timestamp: number;
+  isMine: boolean;
+  group_id?: number;
+  segments?: MessageSegment[];
+}
