@@ -499,7 +499,7 @@ export function App() {
           </Box>
         ) : (
           /* ---- Messages ---- */
-          visibleMsgs.slice(-Math.max(termHeight - 5, 1)).map((msg, i) => {
+          visibleMsgs.slice(-Math.max(termHeight - 6, 1)).map((msg, i) => {
             const isMine = msg.senderId === selfId;
             const time = formatTime(msg.timestamp);
             const sender = isMine
@@ -544,14 +544,14 @@ export function App() {
       </Box>
 
       {/* Status bar */}
-      <Box paddingX={1}>
+      <Box flexDirection="row" paddingX={1}>
         <Text color="gray" dimColor>
           {modalMode
             ? `${filteredContacts.length} match${filteredContacts.length !== 1 ? "es" : ""}`
             : statusMsg}
         </Text>
         <Box marginLeft={2}>
-          <Text color="gray" dimColor>
+          <Text color="gray" dimColor wrap="truncate-end">
             {modalMode
               ? "Esc=close"
               : "/session /contacts /groups /friends /reload /quit"}
