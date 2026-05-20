@@ -22,11 +22,59 @@ function clamp(v: number, lo: number, hi: number) {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
-function truncate(value: string, max: number) {
+function singleLine(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function charWidth(char: string) {
+  const code = char.codePointAt(0) || 0;
+  if (
+    code === 0 ||
+    (code >= 0x300 && code <= 0x36f) ||
+    (code >= 0x1ab0 && code <= 0x1aff) ||
+    (code >= 0x1dc0 && code <= 0x1dff) ||
+    (code >= 0xfe20 && code <= 0xfe2f)
+  ) {
+    return 0;
+  }
+
+  if (
+    (code >= 0x1100 && code <= 0x115f) ||
+    (code >= 0x2e80 && code <= 0xa4cf) ||
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xfe10 && code <= 0xfe19) ||
+    (code >= 0xfe30 && code <= 0xfe6f) ||
+    (code >= 0xff00 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6) ||
+    (code >= 0x1f300 && code <= 0x1faff)
+  ) {
+    return 2;
+  }
+
+  return 1;
+}
+
+function textWidth(value: string) {
+  return Array.from(value).reduce((width, char) => width + charWidth(char), 0);
+}
+
+function truncateCells(value: string, max: number) {
+  const text = singleLine(value);
   if (max <= 0) return "";
-  if (value.length <= max) return value;
+  if (textWidth(text) <= max) return text;
   if (max <= 1) return "…";
-  return `${value.slice(0, max - 1)}…`;
+
+  let width = 0;
+  let result = "";
+  for (const char of Array.from(text)) {
+    const next = width + charWidth(char);
+    if (next > max - 1) break;
+    result += char;
+    width = next;
+  }
+
+  return `${result}…`;
 }
 
 export function App() {
@@ -576,16 +624,16 @@ export function App() {
 
     return (
       <Box key={c.id} flexDirection="column">
-        <Box justifyContent="space-between">
-          <Text color={highlighted ? "yellow" : undefined} bold={highlighted}>
-            {marker} {icon} {truncate(c.name, nameWidth)}
+        <Box justifyContent="space-between" height={1} overflow="hidden">
+          <Text color={highlighted ? "yellow" : undefined} bold={highlighted} wrap="truncate-end">
+            {marker} {icon} {truncateCells(c.name, nameWidth)}
           </Text>
           <Text color={unread > 0 ? "green" : "gray"} bold={unread > 0}>
             {unread > 0 ? `${unread > 99 ? "99+" : unread} new` : String(c.id)}
           </Text>
         </Box>
-        <Box paddingLeft={2}>
-          <Text dimColor wrap="truncate-end">{truncate(latest.replace(/\s+/g, " ").trim(), Math.max(termWidth - 10, 24))}</Text>
+        <Box paddingLeft={2} height={1} overflow="hidden">
+          <Text dimColor wrap="truncate-end">{truncateCells(latest, Math.max(termWidth - 10, 24))}</Text>
         </Box>
       </Box>
     );
@@ -614,7 +662,7 @@ export function App() {
       return (
         <Box flexDirection="column" paddingX={2} paddingY={1}>
           <Text color="cyan" bold>
-            {activeSession.name}
+            {truncateCells(activeSession.name, Math.max(termWidth - 4, 10))}
           </Text>
           <Text color="gray" dimColor>
             No messages in this local session yet. Type below to send the first one.
@@ -643,21 +691,21 @@ export function App() {
     const sender = isMine ? "you" : msg.senderName || String(msg.senderId);
     const nameWidth = activeSession?.type === "group" ? 14 : 10;
     const contentWidth = Math.max(termWidth - nameWidth - 10, 16);
-    const content = compactMessage(msg).replace(/\s+/g, " ").trim();
+    const content = compactMessage(msg);
 
     return (
-      <Box key={`${msg.id}-${i}`} flexDirection="row" paddingX={1}>
+      <Box key={`${msg.id}-${i}`} flexDirection="row" paddingX={1} height={1} overflow="hidden">
         <Box width={6}>
           <Text dimColor>{time}</Text>
         </Box>
         <Box width={nameWidth + 1}>
-          <Text color={isMine ? "green" : "cyan"} bold>
-            {truncate(sender, nameWidth)}
+          <Text color={isMine ? "green" : "cyan"} bold wrap="truncate-end">
+            {truncateCells(sender, nameWidth)}
           </Text>
         </Box>
         <Box width={contentWidth}>
           <Text color={isMine ? "green" : "white"} wrap="truncate-end">
-            {truncate(content || "(empty)", contentWidth)}
+            {truncateCells(content || "(empty)", contentWidth)}
           </Text>
         </Box>
       </Box>
@@ -689,7 +737,7 @@ export function App() {
   return (
     <Box flexDirection="column" height={termHeight}>
       {/* Header */}
-      <Box flexDirection="row" paddingX={1}>
+      <Box flexDirection="row" paddingX={1} height={1} overflow="hidden">
         <Text bold color="magenta">
           QQ-CLI
         </Text>
@@ -703,14 +751,14 @@ export function App() {
           </Text>
         )}
         {nickname && (
-          <Text color="white">@{nickname}</Text>
+          <Text color="white" wrap="truncate-end">@{truncateCells(nickname, Math.max(termWidth - 20, 8))}</Text>
         )}
         <Text dimColor> · {contacts.length}c</Text>
         {activeSession && (
           <>
             <Text dimColor> ─ </Text>
             <Text color="yellow" bold>
-              {activeSession.name}
+              {truncateCells(activeSession.name, Math.max(termWidth - 28, 8))}
             </Text>
             <Text dimColor>
               {activeSession.type === "group" ? " [group]" : ""}
@@ -724,7 +772,7 @@ export function App() {
       </Box>
 
       {/* Body */}
-      <Box flexDirection="column" flexGrow={1}>
+      <Box flexDirection="column" height={bodyRows} flexShrink={1} overflow="hidden">
         {helpMode ? (
           renderHelpPanel()
         ) : modalMode ? (
@@ -765,7 +813,7 @@ export function App() {
       </Box>
 
       {/* Composer */}
-      <Box paddingX={1} paddingBottom={1}>
+      <Box paddingX={1} paddingBottom={1} height={composerRows} flexShrink={0} overflow="hidden">
         <Box
           flexDirection="column"
           width={composerWidth}
@@ -773,7 +821,7 @@ export function App() {
           borderColor={connected ? "gray" : "yellow"}
           paddingX={1}
         >
-          <Box flexDirection="row">
+          <Box flexDirection="row" height={1} overflow="hidden">
             <Text color="yellow" bold>› </Text>
             <TextInput
               value={inputText}
@@ -786,7 +834,7 @@ export function App() {
                   : modalMode
                   ? "Filter sessions, then Enter"
                   : activeSession
-                  ? `Message ${activeSession.name}`
+                  ? `Message ${truncateCells(activeSession.name, Math.max(composerWidth - 14, 8))}`
                   : "Ask /session to choose a chat"
               }
             />
