@@ -8,10 +8,10 @@ const MAX_MESSAGES = 50;
 
 const HELP_ROWS = [
   ["/session <name|id>", "Open the session picker or jump to one match"],
-  ["/contacts [query]", "Search all contacts"],
-  ["/groups [query]", "Search group chats"],
-  ["/friends [query]", "Search friends"],
-  ["/reload", "Reload login info and contact lists"],
+  ["/contacts [query]", "Search all indexed sessions"],
+  ["/groups [query]", "Search channel sessions"],
+  ["/friends [query]", "Search direct sessions"],
+  ["/reload", "Reload account info and session index"],
   ["/help", "Show this command panel"],
   ["Tab", "Cycle sessions"],
   ["Esc", "Close panel or clear input"],
@@ -167,9 +167,9 @@ export function App() {
         const groups = await client.getGroupList();
         const all = [...friends, ...groups];
         setContacts(all);
-        setStatusMsg(`${all.length} contacts loaded`);
+        setStatusMsg(`${all.length} sessions indexed`);
       } catch {
-        setStatusMsg("Failed to load contacts");
+        setStatusMsg("Failed to load session index");
       }
     })();
   }, [connected]);
@@ -240,7 +240,7 @@ export function App() {
 
     if (modalMode) {
       if (filteredContacts.length === 0) {
-        setStatusMsg("No matching contacts");
+        setStatusMsg("No matching sessions");
         return;
       }
       const idx = clamp(modalHighlight, 0, filteredContacts.length - 1);
@@ -435,7 +435,7 @@ export function App() {
         delete next[contact.id];
         return next;
       });
-      setStatusMsg(`Session: ${contact.name}`);
+      setStatusMsg(`Session ${contact.name}`);
     }
   }
 
@@ -486,7 +486,7 @@ export function App() {
       case "/reload":
         loadedRef.current = false;
         setInputText("");
-        setStatusMsg("Reloading contacts...");
+        setStatusMsg("Reloading session index...");
         break;
       case "/help":
       case "/h":
@@ -618,8 +618,8 @@ export function App() {
     const latest = lastMessage
       ? `${lastMessage.senderId === selfId ? "you" : lastMessage.senderName}: ${compactMessage(lastMessage)}`
       : c.type === "group"
-      ? "Group chat"
-      : "Friend";
+      ? "Channel session"
+      : "Direct session";
     const nameWidth = Math.max(termWidth - (unread ? 24 : 16), 18);
 
     return (
@@ -678,7 +678,7 @@ export function App() {
         </Text>
         <Text color="gray" dimColor>
           {connected
-            ? "Use /session to pick a chat, /groups for group chats, or /help for commands."
+            ? "Use /session to pick a session, /contacts to search, or /help for commands."
             : "Waiting for OneBot WebSocket. Check ONEBOT_WS_URL if this stays here."}
         </Text>
       </Box>
@@ -723,7 +723,7 @@ export function App() {
     ? "Esc"
     : modalMode
     ? "↑↓ PgUp PgDn"
-    : "/help /session /groups /friends";
+    : "/help /session /contacts /reload";
   const composerStatus = helpMode
     ? "Help"
     : modalMode
@@ -739,7 +739,7 @@ export function App() {
       {/* Header */}
       <Box flexDirection="row" paddingX={1} height={1} overflow="hidden">
         <Text bold color="magenta">
-          QQ-CLI
+          QCLI
         </Text>
         {connected ? (
           <Text color="green" bold>
@@ -751,17 +751,17 @@ export function App() {
           </Text>
         )}
         {nickname && (
-          <Text color="white" wrap="truncate-end">@{truncateCells(nickname, Math.max(termWidth - 20, 8))}</Text>
+          <Text color="white" wrap="truncate-end"> acct:{truncateCells(nickname, Math.max(termWidth - 22, 8))}</Text>
         )}
         <Text dimColor> · {contacts.length}c</Text>
         {activeSession && (
           <>
             <Text dimColor> ─ </Text>
-            <Text color="yellow" bold>
+            <Text color="gray">
               {truncateCells(activeSession.name, Math.max(termWidth - 28, 8))}
             </Text>
             <Text dimColor>
-              {activeSession.type === "group" ? " [group]" : ""}
+              {activeSession.type === "group" ? " [chan]" : " [dm]"}
             </Text>
           </>
         )}
@@ -802,7 +802,7 @@ export function App() {
             )}
 
             {filteredContacts.length === 0 && (
-              <Text dimColor>No matching contacts.</Text>
+              <Text dimColor>No matching sessions.</Text>
             )}
           </Box>
         ) : visibleMsgs.length === 0 ? (
@@ -834,8 +834,8 @@ export function App() {
                   : modalMode
                   ? "Filter sessions, then Enter"
                   : activeSession
-                  ? `Message ${truncateCells(activeSession.name, Math.max(composerWidth - 14, 8))}`
-                  : "Ask /session to choose a chat"
+                  ? "Input for current session"
+                  : "Use /session to choose a session"
               }
             />
           </Box>
