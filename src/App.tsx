@@ -6,8 +6,27 @@ import { QQClient } from "./qq-client.js";
 
 const MAX_MESSAGES = 50;
 
+const HELP_ROWS = [
+  ["/session <name|id>", "Open the session picker or jump to one match"],
+  ["/contacts [query]", "Search all contacts"],
+  ["/groups [query]", "Search group chats"],
+  ["/friends [query]", "Search friends"],
+  ["/reload", "Reload login info and contact lists"],
+  ["/help", "Show this command panel"],
+  ["Tab", "Cycle sessions"],
+  ["Esc", "Close panel or clear input"],
+  ["Ctrl+Q / Ctrl+C", "Quit"],
+] as const;
+
 function clamp(v: number, lo: number, hi: number) {
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+function truncate(value: string, max: number) {
+  if (max <= 0) return "";
+  if (value.length <= max) return value;
+  if (max <= 1) return "…";
+  return `${value.slice(0, max - 1)}…`;
 }
 
 export function App() {
@@ -18,6 +37,7 @@ export function App() {
 
   const qqRef = useRef<QQClient | null>(null);
   const loadedRef = useRef(false);
+  const activeSessionRef = useRef<Contact | null>(null);
 
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(0);
@@ -27,6 +47,8 @@ export function App() {
   const [activeSession, setActiveSession] = useState<Contact | null>(null);
   const [inputText, setInputText] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
+  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+  const [helpMode, setHelpMode] = useState(false);
 
   // ---- scrollable picker modal ----
   const [modalMode, setModalMode] = useState(false);
@@ -44,6 +66,10 @@ export function App() {
 
   const visibleMsgs = activeMessages.slice(-MAX_MESSAGES);
 
+  useEffect(() => {
+    activeSessionRef.current = activeSession;
+  }, [activeSession]);
+
   // ---- WebSocket connection ----
   useEffect(() => {
     const client = new QQClient(
@@ -59,6 +85,13 @@ export function App() {
 
     client.onMessage((msg) => {
       setMessages((prev) => [...prev, msg]);
+      const current = activeSessionRef.current;
+      if (!current || current.id !== msg.contactId) {
+        setUnreadCounts((prev) => ({
+          ...prev,
+          [msg.contactId]: (prev[msg.contactId] || 0) + 1,
+        }));
+      }
     });
 
     client.connect();
@@ -96,18 +129,51 @@ export function App() {
   // ---- picker computations ----
   const filterText = inputText.trim().toLowerCase();
 
+  const lastMessageByContact = useMemo(() => {
+    const latest = new Map<number, ChatMessage>();
+    for (const msg of messages) {
+      const prev = latest.get(msg.contactId);
+      if (!prev || msg.timestamp > prev.timestamp) {
+        latest.set(msg.contactId, msg);
+      }
+    }
+    return latest;
+  }, [messages]);
+
+  const orderContacts = (list: Contact[]) =>
+    [...list].sort((a, b) => {
+      const unreadDiff = (unreadCounts[b.id] || 0) - (unreadCounts[a.id] || 0);
+      if (unreadDiff !== 0) return unreadDiff;
+
+      const aActive = activeSession?.id === a.id ? 1 : 0;
+      const bActive = activeSession?.id === b.id ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+
+      return (
+        (lastMessageByContact.get(b.id)?.timestamp || 0) -
+        (lastMessageByContact.get(a.id)?.timestamp || 0)
+      );
+    });
+
   const filteredContacts = useMemo(() => {
     if (!modalMode) return [] as Contact[];
     const f = filterText;
-    if (!f) return modalBaseList;
-    return modalBaseList.filter(
+    const matched = !f ? modalBaseList : modalBaseList.filter(
       (c) =>
         c.name.toLowerCase().includes(f) ||
         String(c.id).includes(f)
     );
-  }, [modalMode, modalBaseList, filterText]);
+    return orderContacts(matched);
+  }, [
+    activeSession?.id,
+    filterText,
+    lastMessageByContact,
+    modalBaseList,
+    modalMode,
+    unreadCounts,
+  ]);
 
-  const maxModalHeight = Math.max(termHeight - 7, 6);
+  const maxModalHeight = Math.max(Math.floor((termHeight - 11) / 2), 3);
 
   // reset highlight & scroll when filter changes
   useEffect(() => {
@@ -118,6 +184,12 @@ export function App() {
 
   // picker handleSubmit - Enter selects highlighted contact
   function handleSubmit(value: string) {
+    if (helpMode) {
+      setHelpMode(false);
+      setInputText("");
+      return;
+    }
+
     if (modalMode) {
       if (filteredContacts.length === 0) {
         setStatusMsg("No matching contacts");
@@ -140,6 +212,7 @@ export function App() {
 
   // ---- modal helpers ----
   function openModal(baseList: Contact[], preFill: string) {
+    setHelpMode(false);
     setModalBaseList(baseList);
     setModalMode(true);
     setModalHighlight(0);
@@ -157,17 +230,23 @@ export function App() {
 
   // ---- key bindings ----
   useInput((input, key) => {
-    if (key.ctrl && input === "q") {
+    if (key.ctrl && (input === "q" || input === "c")) {
       exit();
       return;
     }
 
     if (key.escape) {
-      if (modalMode) {
+      if (helpMode) {
+        setHelpMode(false);
+      } else if (modalMode) {
         closeModal();
       } else {
         setInputText("");
       }
+      return;
+    }
+
+    if (helpMode) {
       return;
     }
 
@@ -234,11 +313,13 @@ export function App() {
     // ---- normal mode keys ----
     if (key.tab) {
       if (contacts.length > 0) {
-        setActiveSession((prev) => {
+        const next = (() => {
+          const prev = activeSession;
           if (!prev) return contacts[0];
           const idx = contacts.findIndex((c) => c.id === prev.id);
           return contacts[(idx + 1) % contacts.length];
-        });
+        })();
+        handleSession(next.id);
       }
       return;
     }
@@ -300,6 +381,12 @@ export function App() {
     const contact = contacts.find((c) => c.id === id);
     if (contact) {
       setActiveSession(contact);
+      setUnreadCounts((prev) => {
+        if (!prev[contact.id]) return prev;
+        const next = { ...prev };
+        delete next[contact.id];
+        return next;
+      });
       setStatusMsg(`Session: ${contact.name}`);
     }
   }
@@ -353,6 +440,13 @@ export function App() {
         setInputText("");
         setStatusMsg("Reloading contacts...");
         break;
+      case "/help":
+      case "/h":
+      case "/?":
+        setHelpMode(true);
+        setInputText("");
+        setStatusMsg("Help");
+        break;
       case "/quit":
       case "/q":
         exit();
@@ -400,15 +494,172 @@ export function App() {
     return `${h}:${m}`;
   }
 
+  function decodeCQValue(value: string) {
+    return value
+      .replace(/&#91;/g, "[")
+      .replace(/&#93;/g, "]")
+      .replace(/&amp;/g, "&");
+  }
+
+  function compactCQ(raw: string) {
+    return raw.replace(/\[CQ:([^,\]]+)((?:,[^\]]*)?)\]/g, (_, type: string, attrs: string) => {
+      const data = new Map<string, string>();
+      for (const pair of attrs.slice(1).split(",")) {
+        const eq = pair.indexOf("=");
+        if (eq > 0) {
+          data.set(pair.slice(0, eq), decodeCQValue(pair.slice(eq + 1)));
+        }
+      }
+
+      switch (type) {
+        case "image":
+          return data.get("summary") || "[image]";
+        case "record":
+          return "[voice]";
+        case "video":
+          return "[video]";
+        case "reply":
+          return "[reply]";
+        case "at":
+          return `@${data.get("qq") || "user"}`;
+        case "face":
+          return "[face]";
+        case "forward":
+          return "[forward]";
+        default:
+          return `[${type}]`;
+      }
+    });
+  }
+
+  function compactMessage(msg: ChatMessage) {
+    if (msg.segments?.length) {
+      const parts = msg.segments.map((seg) => {
+        switch (seg.type) {
+          case "text":
+            return seg.data.text || "";
+          case "image":
+            return seg.data.summary || "[image]";
+          case "record":
+            return "[voice]";
+          case "video":
+            return "[video]";
+          case "reply":
+            return "[reply]";
+          case "at":
+            return `@${seg.data.qq || "user"}`;
+          case "face":
+            return "[face]";
+          case "forward":
+            return "[forward]";
+          default:
+            return `[${seg.type}]`;
+        }
+      });
+      return parts.join(" ");
+    }
+
+    return compactCQ(msg.content);
+  }
+
   function renderContactLine(c: Contact, highlighted: boolean) {
-    const marker = highlighted ? "▶" : " ";
-    const icon = c.type === "group" ? "👥" : "👤";
+    const marker = highlighted ? "›" : " ";
+    const icon = c.type === "group" ? "#" : "@";
+    const unread = unreadCounts[c.id] || 0;
+    const lastMessage = lastMessageByContact.get(c.id);
+    const latest = lastMessage
+      ? `${lastMessage.senderId === selfId ? "you" : lastMessage.senderName}: ${compactMessage(lastMessage)}`
+      : c.type === "group"
+      ? "Group chat"
+      : "Friend";
+    const nameWidth = Math.max(termWidth - (unread ? 24 : 16), 18);
+
     return (
-      <Box key={c.id}>
-        <Text color={highlighted ? "cyan" : undefined} bold={highlighted}>
-          {marker} {icon} {c.name}
+      <Box key={c.id} flexDirection="column">
+        <Box justifyContent="space-between">
+          <Text color={highlighted ? "yellow" : undefined} bold={highlighted}>
+            {marker} {icon} {truncate(c.name, nameWidth)}
+          </Text>
+          <Text color={unread > 0 ? "green" : "gray"} bold={unread > 0}>
+            {unread > 0 ? `${unread > 99 ? "99+" : unread} new` : String(c.id)}
+          </Text>
+        </Box>
+        <Box paddingLeft={2}>
+          <Text dimColor wrap="truncate-end">{truncate(latest.replace(/\s+/g, " ").trim(), Math.max(termWidth - 10, 24))}</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  function renderHelpPanel() {
+    return (
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
+        <Text bold color="cyan">Command palette</Text>
+        <Box marginTop={1} flexDirection="column">
+          {HELP_ROWS.map(([keyName, description]) => (
+            <Box key={keyName}>
+              <Box width={22}>
+                <Text color="yellow">{keyName}</Text>
+              </Box>
+              <Text dimColor>{description}</Text>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+    );
+  }
+
+  function renderEmptyState() {
+    if (activeSession) {
+      return (
+        <Box flexDirection="column" paddingX={2} paddingY={1}>
+          <Text color="cyan" bold>
+            {activeSession.name}
+          </Text>
+          <Text color="gray" dimColor>
+            No messages in this local session yet. Type below to send the first one.
+          </Text>
+        </Box>
+      );
+    }
+
+    return (
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
+        <Text color={connected ? "cyan" : "yellow"} bold>
+          {connected ? "Ready" : "Connecting"}
         </Text>
-        <Text dimColor> ({c.id})</Text>
+        <Text color="gray" dimColor>
+          {connected
+            ? "Use /session to pick a chat, /groups for group chats, or /help for commands."
+            : "Waiting for OneBot WebSocket. Check ONEBOT_WS_URL if this stays here."}
+        </Text>
+      </Box>
+    );
+  }
+
+  function renderMessageRow(msg: ChatMessage, i: number) {
+    const isMine = msg.senderId === selfId;
+    const time = formatTime(msg.timestamp);
+    const sender = isMine ? "you" : msg.senderName || String(msg.senderId);
+    const nameWidth = activeSession?.type === "group" ? 14 : 10;
+    const contentWidth = Math.max(termWidth - nameWidth - 10, 16);
+    const content = compactMessage(msg).replace(/\s+/g, " ").trim();
+
+    return (
+      <Box key={`${msg.id}-${i}`} flexDirection="row" paddingX={1}>
+        <Box width={6}>
+          <Text dimColor>{time}</Text>
+        </Box>
+        <Box width={nameWidth + 1}>
+          <Text color={isMine ? "green" : "cyan"} bold>
+            {truncate(sender, nameWidth)}
+          </Text>
+        </Box>
+        <Box width={contentWidth}>
+          <Text color={isMine ? "green" : "white"} wrap="truncate-end">
+            {truncate(content || "(empty)", contentWidth)}
+          </Text>
+        </Box>
       </Box>
     );
   }
@@ -416,6 +667,24 @@ export function App() {
   const divider = termWidth > 60
     ? "─".repeat(termWidth)
     : "────";
+  const composerRows = 5;
+  const bodyRows = Math.max(termHeight - composerRows - 3, 1);
+  const unreadTotal = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
+  const composerWidth = Math.max(termWidth - 2, 30);
+  const composerHint = helpMode
+    ? "Esc"
+    : modalMode
+    ? "↑↓ PgUp PgDn"
+    : "/help /session /groups /friends";
+  const composerStatus = helpMode
+    ? "Help"
+    : modalMode
+    ? `Enter=open · Esc=close · ${unreadTotal} unread`
+    : statusMsg || (connected ? "Ready" : "Connecting");
+  const composerStatusWidth = Math.max(
+    composerWidth - composerHint.length - 8,
+    10
+  );
 
   return (
     <Box flexDirection="column" height={termHeight}>
@@ -456,106 +725,82 @@ export function App() {
 
       {/* Body */}
       <Box flexDirection="column" flexGrow={1}>
-        {modalMode ? (
-          /* ---- Picker ---- */
+        {helpMode ? (
+          renderHelpPanel()
+        ) : modalMode ? (
           <Box flexDirection="column" paddingX={1} flexGrow={1}>
-            {/* scroll-up indicator */}
-            {modalScrollOff > 0 && (
+            <Box justifyContent="space-between" marginBottom={1}>
+              <Text bold color="cyan">Select session</Text>
               <Text dimColor>
-                ↑ {modalScrollOff} more
+                {unreadTotal > 0 ? `${unreadTotal} unread · ` : ""}
+                {filteredContacts.length} match{filteredContacts.length !== 1 ? "es" : ""}
               </Text>
+            </Box>
+
+            {modalScrollOff > 0 && (
+              <Text dimColor>↑ {modalScrollOff} more</Text>
             )}
 
-            {/* visible items */}
             {filteredContacts
               .slice(modalScrollOff, modalScrollOff + maxModalHeight)
               .map((c, i) =>
-                renderContactLine(
-                  c,
-                  modalScrollOff + i === modalHighlight
-                )
+                renderContactLine(c, modalScrollOff + i === modalHighlight)
               )}
 
-            {/* scroll-down indicator */}
             {filteredContacts.length > modalScrollOff + maxModalHeight && (
               <Text dimColor>
                 ↓ {filteredContacts.length - modalScrollOff - maxModalHeight} more
               </Text>
             )}
 
-            {/* empty state */}
             {filteredContacts.length === 0 && (
               <Text dimColor>No matching contacts.</Text>
             )}
           </Box>
         ) : visibleMsgs.length === 0 ? (
-          /* ---- Empty messages ---- */
-          <Box paddingX={2} paddingY={1}>
-            <Text color="gray" dimColor>
-              {connected
-                ? "No active session. Type /session <name> to start chatting."
-                : "Waiting for connection..."}
-            </Text>
-          </Box>
+          renderEmptyState()
         ) : (
-          /* ---- Messages ---- */
-          visibleMsgs.slice(-Math.max(termHeight - 6, 1)).map((msg, i) => {
-            const isMine = msg.senderId === selfId;
-            const time = formatTime(msg.timestamp);
-            const sender = isMine
-              ? "you"
-              : msg.senderName || String(msg.senderId);
-
-            return (
-              <Box key={`${msg.id}-${i}`} flexDirection="row" paddingX={1}>
-                <Text dimColor>{time}</Text>
-                <Text dimColor> </Text>
-                <Text color={isMine ? "green" : "cyan"} bold>
-                  {sender.padEnd(14).slice(0, 14)}
-                </Text>
-                <Text color={isMine ? "green" : "white"}>
-                  {msg.content}
-                </Text>
-              </Box>
-            );
-          })
+          visibleMsgs.slice(-bodyRows).map(renderMessageRow)
         )}
       </Box>
 
-      {/* Divider before input */}
-      <Box>
-        <Text color="gray" dimColor>{divider}</Text>
-      </Box>
-
-      {/* Input */}
-      <Box flexDirection="row" paddingX={1}>
-        <Text color="yellow" bold>› </Text>
-        <TextInput
-          value={inputText}
-          onChange={setInputText}
-          onSubmit={handleSubmit}
-          focus={true}
-          placeholder={
-            modalMode
-              ? "Type to filter · ↑↓ to navigate · Enter to select · Esc to close"
-              : "Type a message..."
-          }
-        />
-      </Box>
-
-      {/* Status bar */}
-      <Box flexDirection="row" paddingX={1}>
-        <Text color="gray" dimColor>
-          {modalMode
-            ? `${filteredContacts.length} match${filteredContacts.length !== 1 ? "es" : ""}`
-            : statusMsg}
-        </Text>
-        <Box marginLeft={2}>
-          <Text color="gray" dimColor wrap="truncate-end">
-            {modalMode
-              ? "Esc=close"
-              : "/session /contacts /groups /friends /reload /quit"}
-          </Text>
+      {/* Composer */}
+      <Box paddingX={1} paddingBottom={1}>
+        <Box
+          flexDirection="column"
+          width={composerWidth}
+          borderStyle="round"
+          borderColor={connected ? "gray" : "yellow"}
+          paddingX={1}
+        >
+          <Box flexDirection="row">
+            <Text color="yellow" bold>› </Text>
+            <TextInput
+              value={inputText}
+              onChange={setInputText}
+              onSubmit={handleSubmit}
+              focus={true}
+              placeholder={
+                helpMode
+                  ? "Esc to close help"
+                  : modalMode
+                  ? "Filter sessions, then Enter"
+                  : activeSession
+                  ? `Message ${activeSession.name}`
+                  : "Ask /session to choose a chat"
+              }
+            />
+          </Box>
+          <Box justifyContent="space-between">
+            <Box width={composerStatusWidth}>
+              <Text color="gray" dimColor wrap="truncate-end">
+                {composerStatus}
+              </Text>
+            </Box>
+            <Text color="gray" dimColor>
+              {composerHint}
+            </Text>
+          </Box>
         </Box>
       </Box>
     </Box>
