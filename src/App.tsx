@@ -5,6 +5,8 @@ import type { Contact, ChatMessage } from "./types.js";
 import { QQClient } from "./qq-client.js";
 
 const MAX_MESSAGES = 50;
+const HEADER_HEIGHT = 2;
+const COMPOSER_ROWS = 4;
 
 const HELP_ROWS = [
   ["/session <name|id>", "Open the session picker or jump to one match"],
@@ -75,6 +77,16 @@ function truncateCells(value: string, max: number) {
   }
 
   return `${result}…`;
+}
+
+function fillCells(value: string, width: number) {
+  const clipped = truncateCells(value, width);
+  return `${clipped}${" ".repeat(Math.max(width - textWidth(clipped), 0))}`;
+}
+
+function sessionKind(contact: Contact | null) {
+  if (!contact) return "no-session";
+  return contact.type === "group" ? "channel" : "direct";
 }
 
 export function App() {
@@ -221,7 +233,10 @@ export function App() {
     unreadCounts,
   ]);
 
-  const maxModalHeight = Math.max(Math.floor((termHeight - 11) / 2), 3);
+  const maxModalHeight = Math.max(
+    termHeight - HEADER_HEIGHT - COMPOSER_ROWS - 5,
+    3
+  );
 
   // reset highlight & scroll when filter changes
   useEffect(() => {
@@ -620,34 +635,41 @@ export function App() {
       : c.type === "group"
       ? "Channel session"
       : "Direct session";
-    const nameWidth = Math.max(termWidth - (unread ? 24 : 16), 18);
+    const meta = unread > 0
+      ? `${unread > 99 ? "99+" : unread} unread`
+      : `${c.type}:${c.id}`;
+    const metaWidth = unread > 0 ? 10 : c.type === "group" ? 18 : 20;
+    const nameWidth = Math.min(Math.max(Math.floor(termWidth * 0.28), 18), 36);
+    const previewWidth = Math.max(termWidth - nameWidth - metaWidth - 8, 8);
 
     return (
-      <Box key={c.id} flexDirection="column">
-        <Box justifyContent="space-between" height={1} overflow="hidden">
+      <Box key={c.id} flexDirection="row" height={1} overflow="hidden">
+        <Box width={nameWidth + 4}>
           <Text color={highlighted ? "yellow" : undefined} bold={highlighted} wrap="truncate-end">
             {marker} {icon} {truncateCells(c.name, nameWidth)}
           </Text>
-          <Text color={unread > 0 ? "green" : "gray"} bold={unread > 0}>
-            {unread > 0 ? `${unread > 99 ? "99+" : unread} new` : String(c.id)}
+        </Box>
+        <Box width={previewWidth}>
+          <Text dimColor wrap="truncate-end">
+            {truncateCells(latest, previewWidth)}
           </Text>
         </Box>
-        <Box paddingLeft={2} height={1} overflow="hidden">
-          <Text dimColor wrap="truncate-end">{truncateCells(latest, Math.max(termWidth - 10, 24))}</Text>
-        </Box>
+        <Text color={unread > 0 ? "green" : "gray"} bold={unread > 0} dimColor={unread === 0} wrap="truncate-end">
+          {truncateCells(meta, metaWidth)}
+        </Text>
       </Box>
     );
   }
 
   function renderHelpPanel() {
     return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text bold color="cyan">Command palette</Text>
+      <Box flexDirection="column" paddingX={1} paddingY={1}>
+        <Text bold>• Command palette</Text>
         <Box marginTop={1} flexDirection="column">
           {HELP_ROWS.map(([keyName, description]) => (
             <Box key={keyName}>
-              <Box width={22}>
-                <Text color="yellow">{keyName}</Text>
+              <Box width={24}>
+                <Text color="cyan">  {keyName}</Text>
               </Box>
               <Text dimColor>{description}</Text>
             </Box>
@@ -660,25 +682,23 @@ export function App() {
   function renderEmptyState() {
     if (activeSession) {
       return (
-        <Box flexDirection="column" paddingX={2} paddingY={1}>
-          <Text color="cyan" bold>
-            {truncateCells(activeSession.name, Math.max(termWidth - 4, 10))}
-          </Text>
+        <Box flexDirection="column" paddingX={1} paddingY={1}>
+          <Text bold>• {truncateCells(activeSession.name, Math.max(termWidth - 6, 10))}</Text>
           <Text color="gray" dimColor>
-            No messages in this local session yet. Type below to send the first one.
+            └ local session is empty. Type below to append a message.
           </Text>
         </Box>
       );
     }
 
     return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text color={connected ? "cyan" : "yellow"} bold>
-          {connected ? "Ready" : "Connecting"}
+      <Box flexDirection="column" paddingX={1} paddingY={1}>
+        <Text color={connected ? "green" : "yellow"} bold>
+          • {connected ? "Ready" : "Connecting"}
         </Text>
         <Text color="gray" dimColor>
-          {connected
-            ? "Use /session to pick a session, /contacts to search, or /help for commands."
+          └ {connected
+            ? "Use /session to select a session, /contacts to search, or /help."
             : "Waiting for OneBot WebSocket. Check ONEBOT_WS_URL if this stays here."}
         </Text>
       </Box>
@@ -689,22 +709,25 @@ export function App() {
     const isMine = msg.senderId === selfId;
     const time = formatTime(msg.timestamp);
     const sender = isMine ? "you" : msg.senderName || String(msg.senderId);
-    const nameWidth = activeSession?.type === "group" ? 14 : 10;
-    const contentWidth = Math.max(termWidth - nameWidth - 10, 16);
+    const nameWidth = activeSession?.type === "group" ? 16 : 10;
+    const contentWidth = Math.max(termWidth - nameWidth - 15, 16);
     const content = compactMessage(msg);
 
     return (
       <Box key={`${msg.id}-${i}`} flexDirection="row" paddingX={1} height={1} overflow="hidden">
-        <Box width={6}>
+        <Box width={2}>
+          <Text color={isMine ? "green" : "gray"}>{isMine ? "•" : "·"}</Text>
+        </Box>
+        <Box width={7}>
           <Text dimColor>{time}</Text>
         </Box>
         <Box width={nameWidth + 1}>
-          <Text color={isMine ? "green" : "cyan"} bold wrap="truncate-end">
+          <Text color={isMine ? "green" : "cyan"} wrap="truncate-end">
             {truncateCells(sender, nameWidth)}
           </Text>
         </Box>
         <Box width={contentWidth}>
-          <Text color={isMine ? "green" : "white"} wrap="truncate-end">
+          <Text color="white" wrap="truncate-end">
             {truncateCells(content || "(empty)", contentWidth)}
           </Text>
         </Box>
@@ -715,10 +738,9 @@ export function App() {
   const divider = termWidth > 60
     ? "─".repeat(termWidth)
     : "────";
-  const composerRows = 5;
-  const bodyRows = Math.max(termHeight - composerRows - 3, 1);
+  const bodyRows = Math.max(termHeight - COMPOSER_ROWS - HEADER_HEIGHT, 1);
   const unreadTotal = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
-  const composerWidth = Math.max(termWidth - 2, 30);
+  const composerWidth = Math.max(termWidth, 30);
   const composerHint = helpMode
     ? "Esc"
     : modalMode
@@ -729,46 +751,49 @@ export function App() {
     : modalMode
     ? `Enter=open · Esc=close · ${unreadTotal} unread`
     : statusMsg || (connected ? "Ready" : "Connecting");
-  const composerStatusWidth = Math.max(
-    composerWidth - composerHint.length - 8,
-    10
+  const composerBg = "#3a3a3a";
+  const composerStatusLine = fillCells(
+    `${composerStatus} · ${composerHint}`,
+    composerWidth - 2
   );
+  const composerPlaceholder = helpMode
+    ? "Esc to close help"
+    : modalMode
+    ? "Filter sessions, then Enter"
+    : activeSession
+    ? "Input for current session"
+    : "Use /session to choose a session";
+  const inputVisibleWidth = Math.min(
+    Math.max(textWidth(inputText || composerPlaceholder) + 1, 1),
+    composerWidth - 4
+  );
+  const inputTailWidth = Math.max(composerWidth - inputVisibleWidth - 4, 0);
+  const accountLabel = nickname ? `acct:${nickname}` : "acct:pending";
+  const sessionLabel = activeSession
+    ? `${sessionKind(activeSession)}:${activeSession.name}`
+    : "session:none";
+  const headerMeta = [
+    connected ? "online" : "reconnect",
+    accountLabel,
+    `${contacts.length} indexed`,
+    unreadTotal > 0 ? `${unreadTotal} unread` : "clean",
+  ].join(" · ");
+  const headerTitleWidth = Math.max(termWidth - 8, 12);
 
   return (
     <Box flexDirection="column" height={termHeight}>
       {/* Header */}
-      <Box flexDirection="row" paddingX={1} height={1} overflow="hidden">
-        <Text bold color="magenta">
-          QCLI
-        </Text>
-        {connected ? (
-          <Text color="green" bold>
-            {" ● "}
+      <Box flexDirection="column" height={HEADER_HEIGHT} overflow="hidden">
+        <Box flexDirection="row" paddingX={1} height={1} overflow="hidden">
+          <Text color={connected ? "green" : "yellow"}>{connected ? "●" : "●"}</Text>
+          <Text bold> qq-cli </Text>
+          <Text dimColor wrap="truncate-end">
+            {truncateCells(headerMeta, Math.max(termWidth - 10, 8))}
           </Text>
-        ) : (
-          <Text color="red" bold>
-            {" ● "}
-          </Text>
-        )}
-        {nickname && (
-          <Text color="white" wrap="truncate-end"> acct:{truncateCells(nickname, Math.max(termWidth - 22, 8))}</Text>
-        )}
-        <Text dimColor> · {contacts.length}c</Text>
-        {activeSession && (
-          <>
-            <Text dimColor> ─ </Text>
-            <Text color="gray">
-              {truncateCells(activeSession.name, Math.max(termWidth - 28, 8))}
-            </Text>
-            <Text dimColor>
-              {activeSession.type === "group" ? " [chan]" : " [dm]"}
-            </Text>
-          </>
-        )}
-      </Box>
-
-      <Box>
-        <Text color="gray" dimColor>{divider}</Text>
+        </Box>
+        <Box paddingX={1} height={1} overflow="hidden">
+          <Text dimColor>{truncateCells(`─ ${sessionLabel} ${divider}`, headerTitleWidth)}</Text>
+        </Box>
       </Box>
 
       {/* Body */}
@@ -776,9 +801,9 @@ export function App() {
         {helpMode ? (
           renderHelpPanel()
         ) : modalMode ? (
-          <Box flexDirection="column" paddingX={1} flexGrow={1}>
+          <Box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1}>
             <Box justifyContent="space-between" marginBottom={1}>
-              <Text bold color="cyan">Select session</Text>
+              <Text bold>• Select session</Text>
               <Text dimColor>
                 {unreadTotal > 0 ? `${unreadTotal} unread · ` : ""}
                 {filteredContacts.length} match{filteredContacts.length !== 1 ? "es" : ""}
@@ -813,40 +838,34 @@ export function App() {
       </Box>
 
       {/* Composer */}
-      <Box paddingX={1} paddingBottom={1} height={composerRows} flexShrink={0} overflow="hidden">
+      <Box height={COMPOSER_ROWS} flexShrink={0} overflow="hidden" flexDirection="column">
+        <Box height={1}>
+          <Text color="gray" dimColor>{divider}</Text>
+        </Box>
         <Box
           flexDirection="column"
           width={composerWidth}
-          borderStyle="round"
-          borderColor={connected ? "gray" : "yellow"}
           paddingX={1}
+          paddingY={0}
         >
           <Box flexDirection="row" height={1} overflow="hidden">
-            <Text color="yellow" bold>› </Text>
-            <TextInput
-              value={inputText}
-              onChange={setInputText}
-              onSubmit={handleSubmit}
-              focus={true}
-              placeholder={
-                helpMode
-                  ? "Esc to close help"
-                  : modalMode
-                  ? "Filter sessions, then Enter"
-                  : activeSession
-                  ? "Input for current session"
-                  : "Use /session to choose a session"
-              }
-            />
+            <Text color="white" backgroundColor={composerBg} bold>› </Text>
+            <Text color="white" backgroundColor={composerBg}>
+              <TextInput
+                value={inputText}
+                onChange={setInputText}
+                onSubmit={handleSubmit}
+                focus={true}
+                placeholder={composerPlaceholder}
+              />
+            </Text>
+            <Text backgroundColor={composerBg}>
+              {" ".repeat(inputTailWidth)}
+            </Text>
           </Box>
-          <Box justifyContent="space-between">
-            <Box width={composerStatusWidth}>
-              <Text color="gray" dimColor wrap="truncate-end">
-                {composerStatus}
-              </Text>
-            </Box>
-            <Text color="gray" dimColor>
-              {composerHint}
+          <Box justifyContent="space-between" height={1} overflow="hidden">
+            <Text color="white" backgroundColor={composerBg} dimColor wrap="truncate-end">
+              {composerStatusLine}
             </Text>
           </Box>
         </Box>
