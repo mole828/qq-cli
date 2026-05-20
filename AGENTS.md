@@ -15,3 +15,4 @@
 - Keep QQ-specific details readable but visually restrained, especially group names, friend names, and message metadata.
 - Compress CQ segments into short log-like tokens such as `[image]`, `[reply]`, `[voice]`, and `@123456`.
 - Layout must protect the composer from message wrapping issues: headers, names, previews, and message bodies should be clipped or constrained rather than resizing the input area.
+- If `.local/ui-reference/` exists, inspect its local-only screenshots and notes for UI direction before making visual changes.
