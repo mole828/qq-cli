@@ -25,6 +25,7 @@ qq-cli 的界面目标是做成一个低干扰的终端消息工作台，而不�
 - 使用 `/session` 临时会话面板切换聊天
 - 在会话面板中显示未读数和最近消息摘要
 - 压缩 CQ 消息段，例如图片、回复、@、语音、视频等，避免长协议串挤压界面
+- 可选展开图片引用，显示图片 URL、file、path 或 md5 等来源信息
 - 底部 boxed composer 输入框，适合持续对话操作
 - JSON 日志落盘，便于排查 WebSocket 和 OneBot API 问题
 
@@ -73,6 +74,12 @@ ONEBOT_ACCESS_TOKEN=your-token npm run dev
 ONEBOT_WS_URL=ws://127.0.0.1:3001 ONEBOT_ACCESS_TOKEN=your-token npm run dev
 ```
 
+默认情况下图片消息仍压缩为 `[image]`。如果希望启动时展开图片引用：
+
+```bash
+QQ_CLI_SHOW_IMAGES=1 npm run dev
+```
+
 ## 使用 NapCat
 
 仓库里提供了一个基础的 `napcat-docker-compose.yaml`：
@@ -100,6 +107,7 @@ docker compose -f napcat-docker-compose.yaml up -d
 | `/contacts [关键词]` 或 `/c` | 搜索所有联系人 |
 | `/groups [关键词]` 或 `/g` | 搜索群聊 |
 | `/friends [关键词]` 或 `/f` | 搜索好友 |
+| `/images [on\|off]` | 切换图片引用展开状态 |
 | `/reload` | 重新加载登录信息、好友列表和群列表 |
 | `/help` | 打开帮助面板 |
 | `/quit` 或 `/q` | 退出 |
@@ -186,6 +194,7 @@ qq-cli 会尽量把常见 CQ 段压缩成短标签，例如 `[image]`、`[reply]
 ## 当前限制
 
 - 目前主要支持文本发送
-- 图片、语音、视频等消息以摘要形式显示，不做媒体预览
+- 图片默认以摘要形式显示；开启 `QQ_CLI_SHOW_IMAGES=1` 或使用 `/images on` 后会展开图片引用，但不做 inline 媒体预览
+- 语音、视频等消息以摘要形式显示，不做媒体预览
 - 历史消息不持久化，重启后只显示本次运行期间收到的消息
 - 会话列表来自 OneBot 好友列表和群列表，不包含更复杂的最近会话同步

@@ -16,3 +16,8 @@
 - Compress CQ segments into short log-like tokens such as `[image]`, `[reply]`, `[voice]`, and `@123456`.
 - Layout must protect the composer from message wrapping issues: headers, names, previews, and message bodies should be clipped or constrained rather than resizing the input area.
 - If `.local/ui-reference/` exists, inspect its local-only screenshots and notes for UI direction before making visual changes.
+
+## Commit Messages
+- Use conventional commit types in English, such as `feat`, `fix`, `refactor`, `docs`, `test`, and `chore`.
+- Add a scope only when the touched module is clear and large enough to make the scope useful, for example `feat(app): ...`.
+- Write the message after the colon in Chinese, for example `feat: 拆分终端 UI 组件`.
