@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
+import type { ImageMode } from "../config.js";
 import type { Contact } from "../types.js";
 import { truncateCells } from "../terminal-text.js";
 import { HEADER_HEIGHT } from "./layout.js";
@@ -15,7 +16,7 @@ interface HeaderProps {
   contactsCount: number;
   activeSession: Contact | null;
   unreadTotal: number;
-  showImages: boolean;
+  imageMode: ImageMode;
   termWidth: number;
 }
 
@@ -25,7 +26,7 @@ export function Header({
   contactsCount,
   activeSession,
   unreadTotal,
-  showImages,
+  imageMode,
   termWidth,
 }: HeaderProps) {
   const divider = termWidth > 60 ? "─".repeat(termWidth) : "────";
@@ -37,7 +38,7 @@ export function Header({
     connected ? "online" : "reconnect",
     accountLabel,
     `${contactsCount} indexed`,
-    showImages ? "images:expanded" : "images:compact",
+    `images:${imageMode}`,
     unreadTotal > 0 ? `${unreadTotal} unread` : "clean",
   ].join(" · ");
   const headerTitleWidth = Math.max(termWidth - 8, 12);

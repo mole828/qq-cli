@@ -6,7 +6,7 @@ export const HELP_ROWS = [
   ["/contacts [query]", "Search all indexed sessions"],
   ["/groups [query]", "Search channel sessions"],
   ["/friends [query]", "Search direct sessions"],
-  ["/images [on|off]", "Toggle expanded image references"],
+  ["/images off|link|inline", "Set image display mode"],
   ["/reload", "Reload account info and session index"],
   ["/help", "Show this command panel"],
   ["Tab", "Cycle sessions"],

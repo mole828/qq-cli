@@ -1,4 +1,5 @@
 import type { ChatMessage } from "./types.js";
+import type { ImageMode } from "./config.js";
 
 export function decodeCQValue(value: string) {
   return value
@@ -7,24 +8,45 @@ export function decodeCQValue(value: string) {
     .replace(/&amp;/g, "&");
 }
 
-export function compactCQ(raw: string, options?: { expandImages?: boolean }) {
+function parseCQAttrs(attrs: string) {
+  const data = new Map<string, string>();
+  for (const pair of attrs.slice(1).split(",")) {
+    const eq = pair.indexOf("=");
+    if (eq > 0) {
+      data.set(pair.slice(0, eq), decodeCQValue(pair.slice(eq + 1)));
+    }
+  }
+
+  return Object.fromEntries(data);
+}
+
+export function getImageSource(data: Record<string, string>) {
+  return data.url || data.file || data.path || null;
+}
+
+export function getFirstImageSource(msg: ChatMessage) {
+  if (msg.segments?.length) {
+    for (const seg of msg.segments) {
+      if (seg.type !== "image") continue;
+      const source = getImageSource(seg.data);
+      if (source) return source;
+    }
+  }
+
+  const match = msg.content.match(/\[CQ:image((?:,[^\]]*)?)\]/);
+  if (!match) return null;
+  return getImageSource(parseCQAttrs(match[1]));
+}
+
+export function compactCQ(raw: string, options?: { imageMode?: ImageMode }) {
   return raw.replace(
     /\[CQ:([^,\]]+)((?:,[^\]]*)?)\]/g,
     (_, type: string, attrs: string) => {
-      const data = new Map<string, string>();
-      for (const pair of attrs.slice(1).split(",")) {
-        const eq = pair.indexOf("=");
-        if (eq > 0) {
-          data.set(pair.slice(0, eq), decodeCQValue(pair.slice(eq + 1)));
-        }
-      }
+      const data = parseCQAttrs(attrs);
 
       switch (type) {
         case "image":
-          return imageToken(
-            Object.fromEntries(data),
-            options?.expandImages ?? false
-          );
+          return imageToken(data, options?.imageMode ?? "off");
         case "record":
           return "[voice]";
         case "video":
@@ -32,7 +54,7 @@ export function compactCQ(raw: string, options?: { expandImages?: boolean }) {
         case "reply":
           return "[reply]";
         case "at":
-          return `@${data.get("qq") || "user"}`;
+          return `@${data.qq || "user"}`;
         case "face":
           return "[face]";
         case "forward":
@@ -44,8 +66,8 @@ export function compactCQ(raw: string, options?: { expandImages?: boolean }) {
   );
 }
 
-export function imageToken(data: Record<string, string>, expanded: boolean) {
-  if (!expanded) return data.summary || "[image]";
+export function imageToken(data: Record<string, string>, imageMode: ImageMode) {
+  if (imageMode !== "link") return data.summary || "[image]";
 
   const source =
     data.url ||
@@ -69,16 +91,16 @@ export function imageToken(data: Record<string, string>, expanded: boolean) {
 
 export function compactMessage(
   msg: ChatMessage,
-  options?: { expandImages?: boolean }
+  options?: { imageMode?: ImageMode }
 ) {
-  const expandImages = options?.expandImages ?? false;
+  const imageMode = options?.imageMode ?? "off";
   if (msg.segments?.length) {
     const parts = msg.segments.map((seg) => {
       switch (seg.type) {
         case "text":
           return seg.data.text || "";
         case "image":
-          return imageToken(seg.data, expandImages);
+          return imageToken(seg.data, imageMode);
         case "record":
           return "[voice]";
         case "video":
@@ -98,5 +120,5 @@ export function compactMessage(
     return parts.join(" ");
   }
 
-  return compactCQ(msg.content, { expandImages });
+  return compactCQ(msg.content, { imageMode });
 }

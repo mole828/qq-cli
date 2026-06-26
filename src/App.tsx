@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useMemo } from "react";
 import { Box, useInput, useStdout, useApp } from "ink";
 import type { Contact, ChatMessage } from "./types.js";
 import { QQClient } from "./qq-client.js";
-import { envFlag } from "./config.js";
+import { getInitialImageMode, parseImageMode } from "./config.js";
 import { Composer } from "./ui/Composer.js";
 import { EmptyState } from "./ui/EmptyState.js";
 import { Header } from "./ui/Header.js";
@@ -35,7 +35,7 @@ export function App() {
   const [statusMsg, setStatusMsg] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [helpMode, setHelpMode] = useState(false);
-  const [showImages, setShowImages] = useState(() => envFlag("QQ_CLI_SHOW_IMAGES"));
+  const [imageMode, setImageMode] = useState(() => getInitialImageMode());
 
   // ---- scrollable picker modal ----
   const [modalMode, setModalMode] = useState(false);
@@ -425,20 +425,12 @@ export function App() {
       }
       case "/images": {
         const normalized = args.trim().toLowerCase();
-        if (!normalized) {
-          setShowImages((prev) => {
-            const next = !prev;
-            setStatusMsg(`Images ${next ? "expanded" : "compact"}`);
-            return next;
-          });
-        } else if (["on", "true", "1", "yes"].includes(normalized)) {
-          setShowImages(true);
-          setStatusMsg("Images expanded");
-        } else if (["off", "false", "0", "no"].includes(normalized)) {
-          setShowImages(false);
-          setStatusMsg("Images compact");
+        const nextMode = parseImageMode(normalized);
+        if (normalized && nextMode === normalized) {
+          setImageMode(nextMode);
+          setStatusMsg(`Images ${nextMode}`);
         } else {
-          setStatusMsg("Usage: /images [on|off]");
+          setStatusMsg("Usage: /images off|link|inline");
         }
         setInputText("");
         break;
@@ -505,7 +497,7 @@ export function App() {
         contactsCount={contacts.length}
         activeSession={activeSession}
         unreadTotal={unreadTotal}
-        showImages={showImages}
+        imageMode={imageMode}
         termWidth={termWidth}
       />
 
@@ -537,7 +529,7 @@ export function App() {
             activeSession={activeSession}
             termWidth={termWidth}
             bodyRows={bodyRows}
-            expandImages={showImages}
+            imageMode={imageMode}
           />
         )}
       </Box>
