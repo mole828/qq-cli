@@ -5,3 +5,4 @@ logs/
 .DS_Store
 *.tsbuildinfo
 .local/
+.container-data/
