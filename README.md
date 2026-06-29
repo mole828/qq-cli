@@ -90,7 +90,8 @@ QQ_CLI_IMAGE_MODE=inline npm run dev
 仓库里提供了一个基础的 `napcat-docker-compose.yaml`：
 
 ```bash
-docker compose -f napcat-docker-compose.yaml up -d
+NAPCAT_UID=$(id -u) NAPCAT_GID=$(id -g) \
+  docker compose -f napcat-docker-compose.yaml up -d
 ```
 
 该 compose 会暴露：
@@ -98,6 +99,16 @@ docker compose -f napcat-docker-compose.yaml up -d
 - `3000`
 - `3001`
 - `6099`
+
+NapCat 的配置、插件和 QQ 登录数据会分别保存在：
+
+```text
+.container-data/napcat/config
+.container-data/napcat/plugins
+.container-data/napcat/qq
+```
+
+这些目录只用于本机运行并已加入 `.gitignore`。删除容器不会删除其中的数据；如需清空 NapCat 的本地状态，请先停止容器，再手动删除 `.container-data/napcat`。
 
 具体 NapCat 登录、OneBot v11 配置和 WebSocket 端口设置，请以你的 NapCat 控制台配置为准。确保 qq-cli 使用的 `ONEBOT_WS_URL` 指向 NapCat 的 OneBot v11 正向 WebSocket 地址。
 

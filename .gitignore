@@ -1,8 +1,15 @@
+# Dependencies and build output
 node_modules/
 dist/
-logs/
-.env*
-.DS_Store
 *.tsbuildinfo
-.local/
+
+# Runtime data and local configuration
+logs/
 .container-data/
+.local/
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
