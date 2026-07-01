@@ -2,7 +2,6 @@ import React from "react";
 import type { ChatMessage, Contact } from "../types.js";
 import type { ImageMode } from "../config.js";
 import { getFirstImageSource } from "../message-format.js";
-import { MAX_MESSAGES } from "./layout.js";
 import { IMAGE_PREVIEW_HEIGHT } from "./ImagePreview.js";
 import { MessageRow } from "./MessageRow.js";
 
@@ -15,6 +14,7 @@ interface MessageListProps {
   termWidth: number;
   bodyRows: number;
   imageMode: ImageMode;
+  scrollOffset: number;
 }
 
 function getMessageRowCost(
@@ -26,18 +26,39 @@ function getMessageRowCost(
   return getFirstImageSource(msg) ? INLINE_IMAGE_ROW_COST : 1;
 }
 
+export function getMaxMessageScrollOffset(
+  messages: ChatMessage[],
+  bodyRows: number,
+  imageMode: ImageMode
+) {
+  const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
+  let usedRows = 0;
+  let firstViewportEnd = 0;
+
+  for (const msg of messages) {
+    const rowCost = getMessageRowCost(msg, imageMode, canRenderInlineImages);
+    if (firstViewportEnd > 0 && usedRows + rowCost > bodyRows) break;
+    firstViewportEnd += 1;
+    if (rowCost > bodyRows) break;
+    usedRows += rowCost;
+  }
+
+  return Math.max(messages.length - firstViewportEnd, 0);
+}
+
 function getVisibleMessages(
   messages: ChatMessage[],
   bodyRows: number,
   imageMode: ImageMode,
-  canRenderInlineImages: boolean
+  canRenderInlineImages: boolean,
+  scrollOffset: number
 ) {
-  const candidates = messages.slice(-MAX_MESSAGES);
   const selected: ChatMessage[] = [];
   let usedRows = 0;
+  const end = Math.max(messages.length - scrollOffset, 1);
 
-  for (let i = candidates.length - 1; i >= 0; i--) {
-    const msg = candidates[i];
+  for (let i = end - 1; i >= 0; i--) {
+    const msg = messages[i];
     const rowCost = getMessageRowCost(msg, imageMode, canRenderInlineImages);
     if (selected.length > 0 && usedRows + rowCost > bodyRows) break;
     if (selected.length === 0 && rowCost > bodyRows) {
@@ -48,7 +69,18 @@ function getVisibleMessages(
     usedRows += rowCost;
   }
 
-  return selected.reverse();
+  selected.reverse();
+
+  // At the start of history, fill otherwise-empty rows with newer messages.
+  for (let i = end; i < messages.length; i++) {
+    const msg = messages[i];
+    const rowCost = getMessageRowCost(msg, imageMode, canRenderInlineImages);
+    if (usedRows + rowCost > bodyRows) break;
+    selected.push(msg);
+    usedRows += rowCost;
+  }
+
+  return selected;
 }
 
 export function MessageList({
@@ -58,13 +90,15 @@ export function MessageList({
   termWidth,
   bodyRows,
   imageMode,
+  scrollOffset,
 }: MessageListProps) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
   const visibleMsgs = getVisibleMessages(
     messages,
     bodyRows,
     imageMode,
-    canRenderInlineImages
+    canRenderInlineImages,
+    scrollOffset
   );
 
   return (

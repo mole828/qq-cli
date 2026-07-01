@@ -8,7 +8,10 @@ import { EmptyState } from "./ui/EmptyState.js";
 import { Header } from "./ui/Header.js";
 import { HelpPanel } from "./ui/HelpPanel.js";
 import { COMPOSER_ROWS, HEADER_HEIGHT } from "./ui/layout.js";
-import { MessageList } from "./ui/MessageList.js";
+import {
+  getMaxMessageScrollOffset,
+  MessageList,
+} from "./ui/MessageList.js";
 import { SessionPicker } from "./ui/SessionPicker.js";
 
 function clamp(v: number, lo: number, hi: number) {
@@ -20,10 +23,12 @@ export function App() {
   const { exit } = useApp();
   const termWidth = stdout?.columns || 80;
   const termHeight = stdout?.rows || 24;
+  const bodyRows = Math.max(termHeight - COMPOSER_ROWS - HEADER_HEIGHT, 1);
 
   const qqRef = useRef<QQClient | null>(null);
   const loadedRef = useRef(false);
   const activeSessionRef = useRef<Contact | null>(null);
+  const messageScrollOffsetRef = useRef(0);
 
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(0);
@@ -36,6 +41,7 @@ export function App() {
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [helpMode, setHelpMode] = useState(false);
   const [imageMode, setImageMode] = useState(() => getInitialImageMode());
+  const [messageScrollOffset, setMessageScrollOffset] = useState(0);
 
   // ---- scrollable picker modal ----
   const [modalMode, setModalMode] = useState(false);
@@ -50,10 +56,25 @@ export function App() {
           (m.chatType === "group" && m.group_id === activeSession.id)
       )
     : [];
+  const maxMessageScrollOffset = getMaxMessageScrollOffset(
+    activeMessages,
+    bodyRows,
+    imageMode
+  );
 
   useEffect(() => {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
+
+  useEffect(() => {
+    messageScrollOffsetRef.current = messageScrollOffset;
+  }, [messageScrollOffset]);
+
+  useEffect(() => {
+    setMessageScrollOffset((offset) =>
+      Math.min(offset, maxMessageScrollOffset)
+    );
+  }, [maxMessageScrollOffset]);
 
   // ---- WebSocket connection ----
   useEffect(() => {
@@ -71,6 +92,12 @@ export function App() {
     client.onMessage((msg) => {
       setMessages((prev) => [...prev, msg]);
       const current = activeSessionRef.current;
+      if (
+        current?.id === msg.contactId &&
+        messageScrollOffsetRef.current > 0
+      ) {
+        setMessageScrollOffset((offset) => offset + 1);
+      }
       if (!current || current.id !== msg.contactId) {
         setUnreadCounts((prev) => ({
           ...prev,
@@ -313,54 +340,18 @@ export function App() {
     }
 
     if (key.upArrow) {
-      if (inputText.startsWith("/session ")) {
-        const partial = inputText.slice("/session ".length).toLowerCase();
-        const matched = contacts.filter(
-          (c) =>
-            c.name.toLowerCase().includes(partial) ||
-            String(c.id).includes(partial)
-        );
-        if (matched.length > 0) {
-          const idx = matched.findIndex((c) => c.id === activeSession?.id);
-          const next = idx < 0 ? 0 : (idx + 1) % matched.length;
-          handleSession(matched[next].id);
-          setInputText("");
-          setStatusMsg(matched[next].name);
-        }
-        return;
-      }
-      if (activeSession && contacts.length > 1) {
-        const idx = contacts.findIndex((c) => c.id === activeSession.id);
-        const prev = idx > 0 ? contacts[idx - 1] : contacts[contacts.length - 1];
-        handleSession(prev.id);
-        setInputText("");
-      }
+      setMessageScrollOffset((offset) =>
+        clamp(
+          offset + 1,
+          0,
+          maxMessageScrollOffset
+        )
+      );
       return;
     }
 
     if (key.downArrow) {
-      if (inputText.startsWith("/session ")) {
-        const partial = inputText.slice("/session ".length).toLowerCase();
-        const matched = contacts.filter(
-          (c) =>
-            c.name.toLowerCase().includes(partial) ||
-            String(c.id).includes(partial)
-        );
-        if (matched.length > 0) {
-          const idx = matched.findIndex((c) => c.id === activeSession?.id);
-          const prev = idx <= 0 ? matched.length - 1 : idx - 1;
-          handleSession(matched[prev].id);
-          setInputText("");
-          setStatusMsg(matched[prev].name);
-        }
-        return;
-      }
-      if (activeSession && contacts.length > 1) {
-        const idx = contacts.findIndex((c) => c.id === activeSession.id);
-        const next = idx < contacts.length - 1 ? contacts[idx + 1] : contacts[0];
-        handleSession(next.id);
-        setInputText("");
-      }
+      setMessageScrollOffset((offset) => Math.max(offset - 1, 0));
       return;
     }
   });
@@ -369,6 +360,7 @@ export function App() {
     const contact = contacts.find((c) => c.id === id);
     if (contact) {
       setActiveSession(contact);
+      setMessageScrollOffset(0);
       setUnreadCounts((prev) => {
         if (!prev[contact.id]) return prev;
         const next = { ...prev };
@@ -481,12 +473,12 @@ export function App() {
         group_id: activeSession.type === "group" ? activeSession.id : undefined,
       };
       setMessages((prev) => [...prev, sent]);
+      setMessageScrollOffset(0);
     } catch {
       setStatusMsg("Send failed");
     }
   }
 
-  const bodyRows = Math.max(termHeight - COMPOSER_ROWS - HEADER_HEIGHT, 1);
   const unreadTotal = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
 
   return (
@@ -530,6 +522,7 @@ export function App() {
             termWidth={termWidth}
             bodyRows={bodyRows}
             imageMode={imageMode}
+            scrollOffset={messageScrollOffset}
           />
         )}
       </Box>
@@ -545,6 +538,7 @@ export function App() {
         connected={connected}
         unreadTotal={unreadTotal}
         termWidth={termWidth}
+        messageScrollOffset={messageScrollOffset}
       />
     </Box>
   );

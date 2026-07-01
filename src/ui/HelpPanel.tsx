@@ -10,6 +10,7 @@ export const HELP_ROWS = [
   ["/reload", "Reload account info and session index"],
   ["/help", "Show this command panel"],
   ["Tab", "Cycle sessions"],
+  ["↑ / ↓", "Scroll through message history"],
   ["Esc", "Close panel or clear input"],
   ["Ctrl+Q / Ctrl+C", "Quit"],
 ] as const;

@@ -15,6 +15,7 @@ interface ComposerProps {
   connected: boolean;
   unreadTotal: number;
   termWidth: number;
+  messageScrollOffset: number;
 }
 
 export function Composer({
@@ -28,6 +29,7 @@ export function Composer({
   connected,
   unreadTotal,
   termWidth,
+  messageScrollOffset,
 }: ComposerProps) {
   const divider = termWidth > 60 ? "─".repeat(termWidth) : "────";
   const composerWidth = Math.max(termWidth, 30);
@@ -35,11 +37,13 @@ export function Composer({
     ? "Esc"
     : modalMode
     ? "↑↓ PgUp PgDn"
-    : "/help /session /contacts /images";
+    : "↑↓ scroll · /help /session /contacts /images";
   const composerStatus = helpMode
     ? "Help"
     : modalMode
     ? `Enter=open · Esc=close · ${unreadTotal} unread`
+    : messageScrollOffset > 0
+    ? `${messageScrollOffset} newer messages below`
     : statusMsg || (connected ? "Ready" : "Connecting");
   const composerBg = "#3a3a3a";
   const composerStatusLine = fillCells(
