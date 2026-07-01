@@ -169,6 +169,81 @@ export class QQClient {
     return String(message);
   }
 
+  private historyItemToChatMessage(
+    item: Record<string, unknown>,
+    contact: Contact
+  ): ChatMessage | null {
+    const sender = (item.sender || {}) as Partial<OneBotMessageEvent["sender"]>;
+    const senderId = Number(item.user_id ?? sender.user_id ?? 0);
+    const id = item.message_id;
+    if ((typeof id !== "number" && typeof id !== "string") || !senderId) {
+      return null;
+    }
+
+    const segments = Array.isArray(item.message)
+      ? (item.message as OneBotMessageEvent["message"])
+      : undefined;
+    const rawMessage = item.raw_message;
+    const chatType = contact.type === "group" ? "group" : "private";
+
+    return {
+      id,
+      contactId: contact.id,
+      chatType,
+      senderId,
+      senderName: sender.card || sender.nickname || String(senderId),
+      content:
+        typeof rawMessage === "string"
+          ? rawMessage
+          : this.extractText(item.message),
+      timestamp: Number(item.time || 0) * 1000,
+      isMine: senderId === this.selfId,
+      group_id: chatType === "group" ? contact.id : undefined,
+      segments,
+    };
+  }
+
+  async getChatHistory(contact: Contact, count = 20): Promise<ChatMessage[] | null> {
+    const isGroup = contact.type === "group";
+    const action = isGroup
+      ? "get_group_msg_history"
+      : "get_friend_msg_history";
+    const params: Record<string, unknown> = {
+      [isGroup ? "group_id" : "user_id"]: String(contact.id),
+      count,
+    };
+    if (!isGroup) {
+      params.message_seq = "0";
+      params.reverseOrder = false;
+    }
+
+    const res = await this.callApi(action, params);
+    const data = res.data as { messages?: unknown[] } | null;
+    if (res.status !== "ok" || !Array.isArray(data?.messages)) {
+      logger.warn("Failed to load message history", {
+        type: contact.type,
+        target: contact.id,
+        retcode: res.retcode,
+      });
+      return null;
+    }
+
+    const messages = data.messages
+      .map((item) =>
+        item && typeof item === "object"
+          ? this.historyItemToChatMessage(item as Record<string, unknown>, contact)
+          : null
+      )
+      .filter((item): item is ChatMessage => item !== null)
+      .sort((a, b) => a.timestamp - b.timestamp);
+    logger.info("Message history loaded", {
+      type: contact.type,
+      target: contact.id,
+      count: messages.length,
+    });
+    return messages;
+  }
+
   async sendMessage(
     chatType: "private" | "group",
     targetId: number,

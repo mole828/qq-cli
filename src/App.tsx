@@ -29,6 +29,7 @@ export function App() {
   const loadedRef = useRef(false);
   const activeSessionRef = useRef<Contact | null>(null);
   const messageScrollOffsetRef = useRef(0);
+  const historyRequestedRef = useRef(new Set<string>());
 
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(0);
@@ -52,8 +53,9 @@ export function App() {
   const activeMessages = activeSession
     ? messages.filter(
         (m) =>
-          m.contactId === activeSession.id ||
-          (m.chatType === "group" && m.group_id === activeSession.id)
+          m.chatType === (activeSession.type === "group" ? "group" : "private") &&
+          (m.contactId === activeSession.id ||
+            (m.chatType === "group" && m.group_id === activeSession.id))
       )
     : [];
   const maxMessageScrollOffset = getMaxMessageScrollOffset(
@@ -94,11 +96,16 @@ export function App() {
       const current = activeSessionRef.current;
       if (
         current?.id === msg.contactId &&
+        (current.type === "group" ? "group" : "private") === msg.chatType &&
         messageScrollOffsetRef.current > 0
       ) {
         setMessageScrollOffset((offset) => offset + 1);
       }
-      if (!current || current.id !== msg.contactId) {
+      if (
+        !current ||
+        current.id !== msg.contactId ||
+        (current.type === "group" ? "group" : "private") !== msg.chatType
+      ) {
         setUnreadCounts((prev) => ({
           ...prev,
           [msg.contactId]: (prev[msg.contactId] || 0) + 1,
@@ -367,7 +374,39 @@ export function App() {
         delete next[contact.id];
         return next;
       });
+      void loadHistory(contact);
+    }
+  }
+
+  async function loadHistory(contact: Contact) {
+    const key = `${contact.type}:${contact.id}`;
+    if (historyRequestedRef.current.has(key)) {
       setStatusMsg(`Session ${contact.name}`);
+      return;
+    }
+    historyRequestedRef.current.add(key);
+    setStatusMsg(`Loading history · ${contact.name}`);
+
+    const client = qqRef.current;
+    const history = client ? await client.getChatHistory(contact, 20) : null;
+    if (history) {
+      setMessages((current) => {
+        const merged = new Map<string, ChatMessage>();
+        for (const message of [...history, ...current]) {
+          const messageKey = `${message.chatType}:${message.contactId}:${message.id}`;
+          merged.set(messageKey, message);
+        }
+        return [...merged.values()].sort((a, b) => a.timestamp - b.timestamp);
+      });
+    }
+
+    const active = activeSessionRef.current;
+    if (active?.id === contact.id && active.type === contact.type) {
+      setStatusMsg(
+        history === null
+          ? `History unavailable · ${contact.name}`
+          : `${history.length} history entries · ${contact.name}`
+      );
     }
   }
 

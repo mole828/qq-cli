@@ -60,7 +60,7 @@ export interface Contact {
 }
 
 export interface ChatMessage {
-  id: number;
+  id: number | string;
   contactId: number;
   chatType: "private" | "group";
   senderId: number;
