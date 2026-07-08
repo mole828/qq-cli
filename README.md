@@ -79,11 +79,10 @@ ONEBOT_WS_URL=ws://127.0.0.1:3001 ONEBOT_ACCESS_TOKEN=your-token npm run dev
 
 ```bash
 QQ_CLI_IMAGE_MODE=off npm run dev
-QQ_CLI_IMAGE_MODE=link npm run dev
 QQ_CLI_IMAGE_MODE=inline npm run dev
 ```
 
-`off` 显示 `[image]`，`link` 展开图片引用，`inline` 会在支持的终端中显示缩略图。
+`off` 显示可点击的 `[image]`，`inline` 会在支持的终端中显示缩略图。也可以用 `Shift+Tab` 在两种模式间切换；`off` 时状态栏不显示图片模式。
 
 ## 使用 NapCat
 
@@ -123,17 +122,18 @@ NapCat 的配置、插件和 QQ 登录数据会分别保存在：
 | `/contacts [关键词]` 或 `/c` | 搜索所有联系人 |
 | `/groups [关键词]` 或 `/g` | 搜索群聊 |
 | `/friends [关键词]` 或 `/f` | 搜索好友 |
-| `/images off\|link\|inline` | 设置图片显示模式 |
+| `/images off\|inline` | 设置图片显示模式 |
 | `/reload` | 重新加载登录信息、好友列表和群列表 |
 | `/help` | 打开帮助面板 |
-| `/quit` 或 `/q` | 退出 |
+| `/exit`、`/quit` 或 `/q` | 正常退出 |
 
 快捷键：
 
 | 快捷键 | 说明 |
 | --- | --- |
 | `Esc` | 关闭面板或清空输入 |
-| `Tab` | 切换到下一个会话 |
+| `Tab` | 输入 `/` 后补全命令；默认无功能 |
+| `Shift+Tab` | 切换内联图片显示状态 |
 | `↑` / `↓` | 在会话面板中移动选择 |
 | `PageUp` / `PageDown` | 在会话面板中翻页 |
 | `Ctrl+C` / `Ctrl+Q` | 退出 |
@@ -210,7 +210,6 @@ qq-cli 会尽量把常见 CQ 段压缩成短标签，例如 `[image]`、`[reply]
 ## 当前限制
 
 - 目前主要支持文本发送
-- 图片默认以摘要形式显示；`QQ_CLI_IMAGE_MODE=link` 或 `/images link` 会展开图片引用
 - `QQ_CLI_IMAGE_MODE=inline` 或 `/images inline` 会尝试显示缩略图，效果取决于终端对 Kitty、iTerm2 inline image、Sixel 或字符 fallback 的支持
 - 语音、视频等消息以摘要形式显示，不做媒体预览
 - 历史消息不持久化，重启后只显示本次运行期间收到的消息

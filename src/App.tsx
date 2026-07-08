@@ -41,6 +41,18 @@ function belongsToSession(message: ChatMessage, contact: Contact) {
   );
 }
 
+const COMPLETABLE_COMMANDS = [
+  "/session",
+  "/contacts",
+  "/groups",
+  "/friends",
+  "/images",
+  "/reload",
+  "/help",
+  "/exit",
+  "/quit",
+] as const;
+
 export function App() {
   const { columns, rows } = useWindowSize();
   const { exit } = useApp();
@@ -61,6 +73,7 @@ export function App() {
   const sessionGenerationRef = useRef(0);
   const messageScrollOffsetRef = useRef(0);
   const attachmentsRef = useRef<ImageAttachment[]>([]);
+  const completionRef = useRef<{ prefix: string; index: number } | null>(null);
 
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(0);
@@ -285,6 +298,7 @@ export function App() {
   }
 
   function handleInputChange(value: string) {
+    completionRef.current = null;
     if (!modalMode && looksLikePastedImagePath(value)) {
       attachPastedImagePaths(value);
       return;
@@ -455,16 +469,26 @@ export function App() {
       return;
     }
 
+    if (key.tab && key.shift) {
+      setImageMode((current) => current === "off" ? "inline" : "off");
+      return;
+    }
+
     if (key.tab) {
-      if (contacts.length > 0) {
-        const next = (() => {
-          const prev = activeSession;
-          if (!prev) return contacts[0];
-          const idx = contacts.findIndex((c) => c.id === prev.id);
-          return contacts[(idx + 1) % contacts.length];
-        })();
-        handleSession(next.id);
-      }
+      if (!inputText.startsWith("/") || inputText.includes(" ")) return;
+
+      const activeCompletion = completionRef.current;
+      const prefix = activeCompletion?.prefix ?? inputText.toLowerCase();
+      const matches = COMPLETABLE_COMMANDS.filter((command) =>
+        command.startsWith(prefix)
+      );
+      if (matches.length === 0) return;
+
+      const index = activeCompletion
+        ? (activeCompletion.index + 1) % matches.length
+        : 0;
+      completionRef.current = { prefix, index };
+      setInputText(matches[index]);
       return;
     }
 
@@ -581,7 +605,7 @@ export function App() {
           setImageMode(nextMode);
           setStatusMsg(`Images ${nextMode}`);
         } else {
-          setStatusMsg("Usage: /images off|link|inline");
+          setStatusMsg("Usage: /images off|inline");
         }
         setInputText("");
         break;
@@ -600,6 +624,7 @@ export function App() {
         break;
       case "/quit":
       case "/q":
+      case "/exit":
         exit();
         break;
       default:

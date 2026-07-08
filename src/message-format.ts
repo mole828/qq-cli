@@ -60,27 +60,8 @@ export function compactCQ(raw: string, options?: CompactOptions) {
   );
 }
 
-export function imageToken(data: Record<string, string>, imageMode: ImageMode) {
-  if (imageMode !== "link") return data.summary || "[image]";
-
-  const source =
-    data.url ||
-    data.file ||
-    data.path ||
-    data.md5 ||
-    data.summary ||
-    "unknown";
-  const label = data.url
-    ? "url"
-    : data.file
-    ? "file"
-    : data.path
-    ? "path"
-    : data.md5
-    ? "md5"
-    : "ref";
-
-  return `[image:${label}=${source}]`;
+export function imageToken(data: Record<string, string>, _imageMode: ImageMode) {
+  return data.summary || "[image]";
 }
 
 function resourceEntry(

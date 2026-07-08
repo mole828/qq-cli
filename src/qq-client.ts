@@ -35,6 +35,8 @@ function parseWsUrl(rawUrl: string): {
 
 export class QQClient {
   private ws: WebSocket | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private shouldReconnect = false;
   private echoCounter = 0;
   private pendingRequests = new Map<string, (res: OneBotApiResponse) => void>();
   private selfId = 0;
@@ -72,20 +74,32 @@ export class QQClient {
   }
 
   connect() {
+    this.shouldReconnect = true;
+    this.openSocket();
+  }
+
+  private openSocket() {
+    if (!this.shouldReconnect) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
     const options: Record<string, unknown> = {};
     if (this.authHeader) {
       options.headers = this.authHeader;
     }
 
-    this.ws = new WebSocket(this.wsUrl, options);
+    const ws = new WebSocket(this.wsUrl, options);
+    this.ws = ws;
 
-    this.ws.on("open", () => {
+    ws.on("open", () => {
       const displayUrl = this.wsUrl.replace(/(access_token=)[^&]+/, "$1***");
       logger.info("WebSocket connected", { url: displayUrl });
       this.updateStatus(true);
     });
 
-    this.ws.on("message", (data: Buffer) => {
+    ws.on("message", (data: Buffer) => {
       try {
         const raw = data.toString();
         logger.debug("WS recv", { raw: raw.slice(0, 500) });
@@ -96,14 +110,17 @@ export class QQClient {
       }
     });
 
-    this.ws.on("close", (code) => {
+    ws.on("close", (code) => {
+      if (this.ws === ws) this.ws = null;
       const displayUrl = this.wsUrl.replace(/(access_token=)[^&]+/, "$1***");
       logger.warn("WebSocket disconnected", { code, url: displayUrl });
       this.updateStatus(false);
-      setTimeout(() => this.connect(), 3000);
+      if (this.shouldReconnect) {
+        this.reconnectTimer = setTimeout(() => this.openSocket(), 3000);
+      }
     });
 
-    this.ws.on("error", (err) => {
+    ws.on("error", (err) => {
       const displayUrl = this.wsUrl.replace(/(access_token=)[^&]+/, "$1***");
       logger.error("WebSocket error", { error: err.message, url: displayUrl });
       this.updateStatus(false);
@@ -373,6 +390,11 @@ export class QQClient {
   }
 
   disconnect() {
+    this.shouldReconnect = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.ws?.close();
     this.ws = null;
   }

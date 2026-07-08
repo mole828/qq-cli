@@ -78,7 +78,7 @@ export function Composer({
     composerWidth - inputVisibleWidth - inputChromeWidth - 2,
     0
   );
-  const imageModeLabel = `Images: ${imageMode}`;
+  const imageModeLabel = imageMode === "inline" ? "Images: inline" : "";
   const statusWidth = Math.max(composerWidth - textWidth(imageModeLabel) - 3, 1);
 
   return (
@@ -149,7 +149,7 @@ export function Composer({
             )}
           </Box>
           <Box flexGrow={1} />
-          <Text color="magenta">{imageModeLabel}</Text>
+          {imageModeLabel && <Text color="magenta">{imageModeLabel}</Text>}
         </Box>
       </Box>
     </Box>

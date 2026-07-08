@@ -6,10 +6,11 @@ export const HELP_ROWS = [
   ["/contacts [query]", "Search all indexed sessions"],
   ["/groups [query]", "Search channel sessions"],
   ["/friends [query]", "Search direct sessions"],
-  ["/images off|link|inline", "Set image display mode"],
+  ["/images off|inline", "Set image display mode"],
   ["/reload", "Reload account info and session index"],
   ["/help", "Show this command panel"],
-  ["Tab", "Cycle sessions"],
+  ["Tab", "Complete a command after /"],
+  ["Shift+Tab", "Toggle inline images"],
   ["↑ / ↓", "Move through message history one entry at a time"],
   ["PageUp / PageDown", "Move through message history by half a page"],
   ["End", "Jump to the latest message"],
@@ -17,6 +18,7 @@ export const HELP_ROWS = [
   ["Cmd+V / Ctrl+V", "Attach image from the macOS clipboard"],
   ["Backspace", "Remove the last attachment when input is empty"],
   ["Ctrl+Q / Ctrl+C", "Quit"],
+  ["/exit", "Quit normally"],
 ] as const;
 
 export function HelpPanel() {

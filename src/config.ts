@@ -1,10 +1,9 @@
-export type ImageMode = "off" | "link" | "inline";
+export type ImageMode = "off" | "inline";
 
 export function parseImageMode(value: string | undefined): ImageMode {
   const normalized = value?.trim().toLowerCase();
   if (
     normalized === "off" ||
-    normalized === "link" ||
     normalized === "inline"
   ) {
     return normalized;
