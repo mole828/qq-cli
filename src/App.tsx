@@ -3,6 +3,7 @@ import { Box, Static, useInput, useStdout, useApp } from "ink";
 import type { Contact, ChatMessage } from "./types.js";
 import { QQClient } from "./qq-client.js";
 import { getInitialImageMode, parseImageMode } from "./config.js";
+import { getFirstImageSource } from "./message-format.js";
 import { Composer } from "./ui/Composer.js";
 import { EmptyState } from "./ui/EmptyState.js";
 import { HelpPanel } from "./ui/HelpPanel.js";
@@ -32,6 +33,8 @@ function belongsToSession(message: ChatMessage, contact: Contact) {
   );
 }
 
+const LIVE_TAIL_SIZE = 3;
+
 export function App() {
   const { stdout } = useStdout();
   const { exit } = useApp();
@@ -52,6 +55,7 @@ export function App() {
   const sessionGenerationRef = useRef(0);
   const transcriptReadyRef = useRef<string | null>(null);
   const transcriptKeysRef = useRef(new Set<string>());
+  const liveEntriesRef = useRef<TranscriptEntry[]>([]);
 
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(0);
@@ -59,6 +63,7 @@ export function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  const [liveEntries, setLiveEntries] = useState<TranscriptEntry[]>([]);
   const [activeSession, setActiveSession] = useState<Contact | null>(null);
   const [inputText, setInputText] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
@@ -84,10 +89,44 @@ export function App() {
         message,
       });
     }
-    if (next.length > 0) {
-      setTranscript((current) => [...current, ...next]);
+    if (next.length === 0) return;
+
+    const combined = [...liveEntriesRef.current, ...next];
+    const splitAt = Math.max(combined.length - LIVE_TAIL_SIZE, 0);
+    const entriesToArchive = combined.slice(0, splitAt);
+    const nextLiveEntries = combined.slice(splitAt);
+    liveEntriesRef.current = nextLiveEntries;
+    setLiveEntries(nextLiveEntries);
+    if (entriesToArchive.length > 0) {
+      setTranscript((current) => [...current, ...entriesToArchive]);
     }
   }
+
+  function archiveOldestLiveEntry() {
+    const [entry, ...remaining] = liveEntriesRef.current;
+    if (!entry) return;
+    liveEntriesRef.current = remaining;
+    setLiveEntries(remaining);
+    setTranscript((current) => [...current, entry]);
+  }
+
+  function archiveAllLiveEntries() {
+    const entries = liveEntriesRef.current;
+    if (entries.length === 0) return;
+    liveEntriesRef.current = [];
+    setLiveEntries([]);
+    setTranscript((current) => [...current, ...entries]);
+  }
+
+  useEffect(() => {
+    const oldest = liveEntries[0];
+    if (!oldest) return;
+    const timer = setTimeout(() => {
+      if (liveEntriesRef.current[0]?.key !== oldest.key) return;
+      archiveOldestLiveEntry();
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [liveEntries[0]?.key]);
 
   useEffect(() => {
     activeSessionRef.current = activeSession;
@@ -360,6 +399,7 @@ export function App() {
   function handleSession(id: number) {
     const contact = contacts.find((c) => c.id === id);
     if (contact) {
+      archiveAllLiveEntries();
       const generation = sessionGenerationRef.current + 1;
       sessionGenerationRef.current = generation;
       transcriptReadyRef.current = null;
@@ -528,7 +568,29 @@ export function App() {
   }
 
   const unreadTotal = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
-  const normalBodyRows = activeSession ? 1 : bodyRows;
+  const liveImageSources = liveEntries.map((entry) =>
+    imageMode === "inline" ? getFirstImageSource(entry.message) : null
+  );
+  const liveImageCount = liveImageSources.filter(Boolean).length;
+  const liveTextRows = liveEntries.reduce(
+    (rows, entry) => rows + (entry.message.isMine || entry.message.senderId === selfId ? 2 : 3),
+    0
+  );
+  const livePreviewHeight = liveImageCount > 0
+    ? Math.min(
+        10,
+        Math.max(Math.floor((bodyRows - liveTextRows) / liveImageCount), 2)
+      )
+    : 0;
+  const liveRows = Math.min(
+    bodyRows,
+    liveTextRows + liveImageCount * livePreviewHeight
+  );
+  const normalBodyRows = activeSession
+    ? liveEntries.length > 0
+      ? Math.max(liveRows, 1)
+      : 1
+    : bodyRows;
 
   return (
     <Box flexDirection="column">
@@ -570,6 +632,20 @@ export function App() {
             connected={connected}
             termWidth={termWidth}
           />
+        ) : liveEntries.length > 0 ? (
+          <>
+            {liveEntries.map((entry, index) => (
+              <TranscriptEntryView
+                key={entry.key}
+                entry={entry}
+                selfId={selfId}
+                termWidth={termWidth}
+                imageMode={imageMode}
+                renderInlineImage={Boolean(liveImageSources[index])}
+                imagePreviewHeight={livePreviewHeight}
+              />
+            ))}
+          </>
         ) : null}
       </Box>
 

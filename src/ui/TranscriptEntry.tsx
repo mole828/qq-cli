@@ -1,8 +1,9 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { ImageMode } from "../config.js";
-import { compactMessage } from "../message-format.js";
+import { compactMessage, getFirstImageSource } from "../message-format.js";
 import type { ChatMessage } from "../types.js";
+import { ImagePreview } from "./ImagePreview.js";
 
 export interface TranscriptEntry {
   key: string;
@@ -23,6 +24,8 @@ interface TranscriptEntryViewProps {
   selfId: number;
   termWidth: number;
   imageMode: ImageMode;
+  renderInlineImage?: boolean;
+  imagePreviewHeight?: number;
 }
 
 export function TranscriptEntryView({
@@ -30,11 +33,16 @@ export function TranscriptEntryView({
   selfId,
   termWidth,
   imageMode,
+  renderInlineImage = false,
+  imagePreviewHeight,
 }: TranscriptEntryViewProps) {
   const { message } = entry;
   const isMine = message.senderId === selfId || message.isMine;
   const sender = isMine ? "you" : message.senderName || String(message.senderId);
   const content = compactMessage(message, { imageMode }) || "(empty)";
+  const imageSource = renderInlineImage && imageMode === "inline"
+    ? getFirstImageSource(message)
+    : null;
 
   if (isMine) {
     return (
@@ -50,6 +58,9 @@ export function TranscriptEntryView({
           <Text bold>› </Text>
           {content}
         </Text>
+        {imageSource && (
+          <ImagePreview source={imageSource} height={imagePreviewHeight} />
+        )}
       </Box>
     );
   }
@@ -61,6 +72,9 @@ export function TranscriptEntryView({
         <Text dimColor> · {formatTime(message.timestamp)}</Text>
       </Text>
       <Text wrap="wrap">{content}</Text>
+      {imageSource && (
+        <ImagePreview source={imageSource} height={imagePreviewHeight} />
+      )}
     </Box>
   );
 }

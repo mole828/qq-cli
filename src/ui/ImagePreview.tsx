@@ -4,22 +4,26 @@ import Image from "ink-picture";
 
 interface ImagePreviewProps {
   source: string;
+  height?: number;
 }
 
 export const IMAGE_PREVIEW_WIDTH = 28;
 export const IMAGE_PREVIEW_HEIGHT = 10;
 
-export function ImagePreview({ source }: ImagePreviewProps) {
+export function ImagePreview({
+  source,
+  height = IMAGE_PREVIEW_HEIGHT,
+}: ImagePreviewProps) {
   return (
     <Box
       width={IMAGE_PREVIEW_WIDTH}
-      height={IMAGE_PREVIEW_HEIGHT}
+      height={height}
       overflow="hidden"
     >
       <Image
         src={source}
         width={IMAGE_PREVIEW_WIDTH}
-        height={IMAGE_PREVIEW_HEIGHT}
+        height={height}
         alt="[image]"
       />
     </Box>
