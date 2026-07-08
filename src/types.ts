@@ -1,16 +1,17 @@
 export interface OneBotMessageEvent {
   time: number;
   self_id: number;
-  post_type: "message";
+  post_type: "message" | "message_sent";
   message_type: "private" | "group";
   sub_type: string;
-  message_id: number;
-  user_id: number;
+  message_id: number | string;
+  user_id: number | string;
   message: MessageSegment[];
   raw_message: string;
   font: number;
   sender: Sender;
-  group_id?: number;
+  group_id?: number | string;
+  target_id?: number | string;
   anonymous?: AnonymousInfo | null;
   message_seq?: number;
 }

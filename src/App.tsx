@@ -166,6 +166,8 @@ export function App() {
     });
 
     client.onMessage((msg) => {
+      const key = messageKey(msg);
+      if (messagesRef.current.some((item) => messageKey(item) === key)) return;
       messagesRef.current = [...messagesRef.current, msg];
       setMessages(messagesRef.current);
       const current = activeSessionRef.current;
@@ -175,6 +177,7 @@ export function App() {
         }
         return;
       }
+      if (msg.isMine) return;
       setUnreadCounts((prev) => ({
         ...prev,
         [msg.contactId]: (prev[msg.contactId] || 0) + 1,
@@ -652,8 +655,11 @@ export function App() {
         group_id: activeSession.type === "group" ? activeSession.id : undefined,
         segments,
       };
-      messagesRef.current = [...messagesRef.current, sent];
-      setMessages(messagesRef.current);
+      const key = messageKey(sent);
+      if (!messagesRef.current.some((item) => messageKey(item) === key)) {
+        messagesRef.current = [...messagesRef.current, sent];
+        setMessages(messagesRef.current);
+      }
       appendMessagesToTranscript([sent]);
       await Promise.all(pendingAttachments.map(removeAttachment));
     } catch (error) {

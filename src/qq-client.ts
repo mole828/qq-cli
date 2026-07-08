@@ -111,7 +111,7 @@ export class QQClient {
   }
 
   private handleMessage(msg: Record<string, unknown>) {
-    if (msg.post_type === "message") {
+    if (msg.post_type === "message" || msg.post_type === "message_sent") {
       this.handleMessageEvent(msg as unknown as OneBotMessageEvent);
     } else if (msg.post_type === "meta_event") {
       if (msg.meta_event_type === "lifecycle") {
@@ -127,7 +127,28 @@ export class QQClient {
   }
 
   private handleMessageEvent(event: OneBotMessageEvent) {
-    if (event.self_id) this.selfId = event.self_id;
+    if (event.self_id) this.selfId = Number(event.self_id);
+
+    const senderId = Number(event.user_id);
+    const groupId = event.group_id === undefined ? undefined : Number(event.group_id);
+    const targetId = event.target_id === undefined ? undefined : Number(event.target_id);
+    const isSent = event.post_type === "message_sent";
+    const contactId = event.message_type === "group"
+      ? groupId ?? targetId
+      : isSent
+        ? targetId
+        : senderId;
+
+    if (!senderId || !contactId) {
+      logger.warn("Ignored message with invalid routing fields", {
+        post_type: event.post_type,
+        message_type: event.message_type,
+        user_id: event.user_id,
+        group_id: event.group_id,
+        target_id: event.target_id,
+      });
+      return;
+    }
 
     const textContent = event.raw_message || this.extractText(event.message);
 
@@ -135,21 +156,20 @@ export class QQClient {
       message_id: event.message_id,
       type: event.message_type,
       user_id: event.user_id,
-      group_id: event.group_id,
+      group_id: groupId,
       content: textContent.slice(0, 200),
     });
 
     const chatMessage: ChatMessage = {
       id: event.message_id,
-      contactId:
-        event.message_type === "private" ? event.user_id : event.group_id!,
+      contactId,
       chatType: event.message_type,
-      senderId: event.user_id,
-      senderName: event.sender.nickname || String(event.user_id),
+      senderId,
+      senderName: event.sender.nickname || String(senderId),
       content: textContent,
       timestamp: event.time * 1000,
-      isMine: event.user_id === this.selfId,
-      group_id: event.group_id,
+      isMine: isSent || senderId === this.selfId,
+      group_id: groupId,
       segments: event.message,
     };
 
