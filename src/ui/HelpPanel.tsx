@@ -12,6 +12,8 @@ export const HELP_ROWS = [
   ["Tab", "Cycle sessions"],
   ["↑ / ↓", "Scroll through message history"],
   ["Esc", "Close panel or clear input"],
+  ["Cmd+V / Ctrl+V", "Attach image from the macOS clipboard"],
+  ["Backspace", "Remove the last attachment when input is empty"],
   ["Ctrl+Q / Ctrl+C", "Quit"],
 ] as const;
 

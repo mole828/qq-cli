@@ -9,6 +9,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "clipboard-image": "^0.1.0",
     "ink": "^7.1.0",
     "ink-picture": "^2.0.0",
     "ink-text-input": "^6.0.0",

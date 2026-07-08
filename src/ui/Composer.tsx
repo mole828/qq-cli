@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import TextInput from "ink-text-input";
+import type { ImageAttachment } from "../clipboard-image.js";
 import type { Contact } from "../types.js";
 import { textWidth, truncateCells } from "../terminal-text.js";
 import { COMPOSER_ROWS } from "./layout.js";
@@ -16,6 +17,7 @@ interface ComposerProps {
   connected: boolean;
   unreadTotal: number;
   termWidth: number;
+  attachments: ImageAttachment[];
 }
 
 export function Composer({
@@ -29,6 +31,7 @@ export function Composer({
   connected,
   unreadTotal,
   termWidth,
+  attachments,
 }: ComposerProps) {
   const divider = "─".repeat(Math.max(termWidth - 2, 4));
   const composerWidth = Math.max(termWidth - 2, 12);
@@ -44,7 +47,7 @@ export function Composer({
     workspace,
     Math.max(Math.min(Math.floor(termWidth * 0.45), 44), 12)
   );
-  const transientStatus = /loading|reloading|failed|unavailable|unknown|usage:/i.test(
+  const transientStatus = /loading|reloading|failed|unavailable|unknown|usage:|clipboard|attach|send/i.test(
     statusMsg
   )
     ? statusMsg
@@ -75,6 +78,18 @@ export function Composer({
         </Text>
       </Box>
       <Box flexDirection="column" width={composerWidth} marginX={1}>
+        <Box height={1} overflow="hidden" paddingX={1}>
+          <Text dimColor>attachments: </Text>
+          <Text
+            color={attachments.length > 0 ? "cyan" : "gray"}
+            dimColor={attachments.length === 0}
+            wrap="truncate-end"
+          >
+            {attachments.length > 0
+              ? attachments.map((_, index) => `[Image #${index + 1}]`).join(" ")
+              : "none"}
+          </Text>
+        </Box>
         <Box height={1} backgroundColor={composerBg}>
           <Text backgroundColor={composerBg}>{" ".repeat(composerWidth)}</Text>
         </Box>

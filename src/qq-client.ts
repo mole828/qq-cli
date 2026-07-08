@@ -6,6 +6,7 @@ import type {
   OneBotApiResponse,
   Contact,
   ChatMessage,
+  MessageSegment,
 } from "./types.js";
 
 function parseWsUrl(rawUrl: string): {
@@ -247,7 +248,7 @@ export class QQClient {
   async sendMessage(
     chatType: "private" | "group",
     targetId: number,
-    content: string
+    content: string | MessageSegment[]
   ): Promise<number | null> {
     const action =
       chatType === "private" ? "send_private_msg" : "send_group_msg";

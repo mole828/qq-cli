@@ -1,7 +1,15 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { Box, Static, useInput, useStdout, useApp } from "ink";
-import type { Contact, ChatMessage } from "./types.js";
+import type { Contact, ChatMessage, MessageSegment } from "./types.js";
 import { QQClient } from "./qq-client.js";
+import {
+  attachmentToBase64,
+  importPastedImagePaths,
+  looksLikePastedImagePath,
+  readClipboardImageAttachments,
+  removeAttachment,
+  type ImageAttachment,
+} from "./clipboard-image.js";
 import { getInitialImageMode, parseImageMode } from "./config.js";
 import { getFirstImageSource } from "./message-format.js";
 import { Composer } from "./ui/Composer.js";
@@ -56,6 +64,7 @@ export function App() {
   const transcriptReadyRef = useRef<string | null>(null);
   const transcriptKeysRef = useRef(new Set<string>());
   const liveEntriesRef = useRef<TranscriptEntry[]>([]);
+  const attachmentsRef = useRef<ImageAttachment[]>([]);
 
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(0);
@@ -66,6 +75,7 @@ export function App() {
   const [liveEntries, setLiveEntries] = useState<TranscriptEntry[]>([]);
   const [activeSession, setActiveSession] = useState<Contact | null>(null);
   const [inputText, setInputText] = useState("");
+  const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   const [statusMsg, setStatusMsg] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [helpMode, setHelpMode] = useState(false);
@@ -131,6 +141,16 @@ export function App() {
   useEffect(() => {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
+
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => () => {
+    for (const attachment of attachmentsRef.current) {
+      void removeAttachment(attachment);
+    }
+  }, []);
 
   // ---- WebSocket connection ----
   useEffect(() => {
@@ -272,7 +292,7 @@ export function App() {
     }
 
     const trimmed = value.trim();
-    if (!trimmed) return;
+    if (!trimmed && attachments.length === 0) return;
     if (trimmed.startsWith("/")) {
       handleCommand(trimmed);
     } else {
@@ -312,11 +332,65 @@ export function App() {
         closeModal();
       } else {
         setInputText("");
+        const discarded = attachments;
+        setAttachments([]);
+        for (const attachment of discarded) void removeAttachment(attachment);
       }
       return;
     }
 
     if (helpMode) {
+      return;
+    }
+
+    if (!modalMode && input.length > 1 && looksLikePastedImagePath(input)) {
+      // macOS terminals commonly turn Cmd+V on an image into a temporary path.
+      // Keep that path out of the text input and promote it to an attachment.
+      setInputText(inputText);
+      setStatusMsg("Importing pasted image...");
+      void importPastedImagePaths(input)
+        .then((nextAttachments) => {
+          setAttachments((current) => [...current, ...nextAttachments]);
+          setStatusMsg(
+            `${nextAttachments.length} image${nextAttachments.length === 1 ? "" : "s"} attached`
+          );
+        })
+        .catch((error: unknown) => {
+          const detail = error instanceof Error ? error.message : String(error);
+          setStatusMsg(`Paste failed · ${detail}`);
+        });
+      return;
+    }
+
+    if (!modalMode && (key.ctrl || key.super) && input.toLowerCase() === "v") {
+      // ink-text-input also receives the key event; restore the controlled value
+      // so the shortcut does not insert a literal "v" into the composer.
+      setInputText(inputText);
+      setStatusMsg("Reading clipboard image...");
+      void readClipboardImageAttachments()
+        .then((nextAttachments) => {
+          setAttachments((current) => [...current, ...nextAttachments]);
+          setStatusMsg(
+            `${nextAttachments.length} image${nextAttachments.length === 1 ? "" : "s"} attached`
+          );
+        })
+        .catch((error: unknown) => {
+          const detail = error instanceof Error ? error.message : String(error);
+          setStatusMsg(`Paste failed · ${detail}`);
+        });
+      return;
+    }
+
+    if (
+      !modalMode &&
+      key.backspace &&
+      inputText.length === 0 &&
+      attachments.length > 0
+    ) {
+      const attachment = attachments[attachments.length - 1];
+      setAttachments((current) => current.slice(0, -1));
+      void removeAttachment(attachment);
+      setStatusMsg("Attachment removed");
       return;
     }
 
@@ -538,18 +612,36 @@ export function App() {
   }
 
   async function handleSend(text: string) {
-    setInputText("");
     if (!activeSession || !qqRef.current) {
       setStatusMsg("No active session. Use /session <name>");
       return;
     }
 
     const chatType = activeSession.type === "group" ? "group" : "private";
+    const pendingAttachments = attachments;
 
     try {
-      await qqRef.current.sendMessage(chatType, activeSession.id, text);
+      const segments: MessageSegment[] = [];
+      if (text) segments.push({ type: "text", data: { text } });
+      for (const attachment of pendingAttachments) {
+        segments.push({
+          type: "image",
+          data: { file: await attachmentToBase64(attachment) },
+        });
+      }
+      const message = segments.length === 1 && segments[0].type === "text"
+        ? text
+        : segments;
+      const messageId = await qqRef.current.sendMessage(
+        chatType,
+        activeSession.id,
+        message
+      );
+      if (messageId === null) throw new Error("OneBot rejected the message");
+      setInputText("");
+      setAttachments([]);
       const sent: ChatMessage = {
-        id: Date.now(),
+        id: messageId,
         contactId: activeSession.id,
         chatType,
         senderId: selfId,
@@ -558,12 +650,15 @@ export function App() {
         timestamp: Date.now(),
         isMine: true,
         group_id: activeSession.type === "group" ? activeSession.id : undefined,
+        segments,
       };
       messagesRef.current = [...messagesRef.current, sent];
       setMessages(messagesRef.current);
       appendMessagesToTranscript([sent]);
-    } catch {
-      setStatusMsg("Send failed");
+      await Promise.all(pendingAttachments.map(removeAttachment));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setStatusMsg(`Send failed · ${detail}`);
     }
   }
 
@@ -660,6 +755,7 @@ export function App() {
         connected={connected}
         unreadTotal={unreadTotal}
         termWidth={termWidth}
+        attachments={attachments}
       />
     </Box>
   );
