@@ -1,16 +1,17 @@
 import React from "react";
 import { Box, Text } from "ink";
-import TextInput from "ink-text-input";
 import type { ImageAttachment } from "../clipboard-image.js";
 import type { ImageMode } from "../config.js";
 import type { Contact } from "../types.js";
 import { textWidth, truncateCells } from "../terminal-text.js";
 import { COMPOSER_ROWS } from "./layout.js";
+import { PasteAwareTextInput } from "./PasteAwareTextInput.js";
 
 interface ComposerProps {
   inputText: string;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
+  onPaste: (value: string) => boolean;
   helpMode: boolean;
   modalMode: boolean;
   activeSession: Contact | null;
@@ -26,6 +27,7 @@ export function Composer({
   inputText,
   onChange,
   onSubmit,
+  onPaste,
   helpMode,
   modalMode,
   activeSession,
@@ -115,11 +117,12 @@ export function Composer({
             </Box>
           )}
           <Text color="white" backgroundColor={composerBg}>
-            <TextInput
+            <PasteAwareTextInput
               value={inputText}
               onChange={onChange}
               onSubmit={onSubmit}
-              focus={true}
+              onPaste={onPaste}
+              focus={!helpMode}
               placeholder={composerPlaceholder}
             />
           </Text>

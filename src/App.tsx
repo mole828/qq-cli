@@ -299,11 +299,13 @@ export function App() {
 
   function handleInputChange(value: string) {
     completionRef.current = null;
-    if (!modalMode && looksLikePastedImagePath(value)) {
-      attachPastedImagePaths(value);
-      return;
-    }
     setInputText(value);
+  }
+
+  function handlePaste(value: string) {
+    if (modalMode || !looksLikePastedImagePath(value)) return false;
+    attachPastedImagePaths(value);
+    return true;
   }
 
   // ---- key bindings ----
@@ -747,6 +749,7 @@ export function App() {
         inputText={inputText}
         onChange={handleInputChange}
         onSubmit={handleSubmit}
+        onPaste={handlePaste}
         helpMode={helpMode}
         modalMode={modalMode}
         activeSession={activeSession}
