@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import TextInput from "ink-text-input";
 import type { ImageAttachment } from "../clipboard-image.js";
+import type { ImageMode } from "../config.js";
 import type { Contact } from "../types.js";
 import { textWidth, truncateCells } from "../terminal-text.js";
 import { COMPOSER_ROWS } from "./layout.js";
@@ -18,6 +19,7 @@ interface ComposerProps {
   unreadTotal: number;
   termWidth: number;
   attachments: ImageAttachment[];
+  imageMode: ImageMode;
 }
 
 export function Composer({
@@ -32,6 +34,7 @@ export function Composer({
   unreadTotal,
   termWidth,
   attachments,
+  imageMode,
 }: ComposerProps) {
   const divider = "─".repeat(Math.max(termWidth - 2, 4));
   const composerWidth = Math.max(termWidth - 2, 12);
@@ -64,6 +67,8 @@ export function Composer({
     Math.max(composerWidth - 6, 1)
   );
   const inputTailWidth = Math.max(composerWidth - inputVisibleWidth - 6, 0);
+  const imageModeLabel = `Images: ${imageMode}`;
+  const statusWidth = Math.max(composerWidth - textWidth(imageModeLabel) - 3, 1);
 
   return (
     <Box
@@ -120,21 +125,25 @@ export function Composer({
           <Text backgroundColor={composerBg}>{" ".repeat(composerWidth)}</Text>
         </Box>
         <Box height={1} overflow="hidden" paddingX={1}>
-          <Text color="#e8d5a3">qq-cli</Text>
-          <Text dimColor> · </Text>
-          <Text color="green">{displayedWorkspace}</Text>
-          <Text dimColor> · </Text>
-          <Text color={connected ? undefined : "yellow"} dimColor={connected}>
-            {connected ? "online" : "reconnecting"}
-          </Text>
-          {unreadTotal > 0 && (
-            <Text color="yellow"> · {unreadTotal} unread</Text>
-          )}
-          {transientStatus && (
-            <Text color="yellow" wrap="truncate-end">
-              {` · ${transientStatus}`}
+          <Box width={statusWidth} flexShrink={1} overflow="hidden">
+            <Text color="#e8d5a3">qq-cli</Text>
+            <Text dimColor> · </Text>
+            <Text color="green">{displayedWorkspace}</Text>
+            <Text dimColor> · </Text>
+            <Text color={connected ? undefined : "yellow"} dimColor={connected}>
+              {connected ? "online" : "reconnecting"}
             </Text>
-          )}
+            {unreadTotal > 0 && (
+              <Text color="yellow"> · {unreadTotal} unread</Text>
+            )}
+            {transientStatus && (
+              <Text color="yellow" wrap="truncate-end">
+                {` · ${transientStatus}`}
+              </Text>
+            )}
+          </Box>
+          <Box flexGrow={1} />
+          <Text color="magenta">{imageModeLabel}</Text>
         </Box>
       </Box>
     </Box>

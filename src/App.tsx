@@ -762,6 +762,7 @@ export function App() {
         unreadTotal={unreadTotal}
         termWidth={termWidth}
         attachments={attachments}
+        imageMode={imageMode}
       />
     </Box>
   );
