@@ -62,11 +62,22 @@ export function Composer({
     : activeSession
     ? "Message current session"
     : "Use /session to choose a session";
+  const attachmentTokens = attachments
+    .map((_, index) => `[Image #${index + 1}]`)
+    .join(" ");
+  const attachmentPrefix = attachmentTokens ? `${attachmentTokens} ` : "";
+  const attachmentDisplayWidth = attachmentPrefix
+    ? Math.min(textWidth(attachmentPrefix), Math.max(Math.floor(composerWidth * 0.45), 10))
+    : 0;
+  const inputChromeWidth = 4 + attachmentDisplayWidth;
   const inputVisibleWidth = Math.min(
     Math.max(textWidth(inputText || composerPlaceholder) + 1, 1),
-    Math.max(composerWidth - 6, 1)
+    Math.max(composerWidth - inputChromeWidth - 2, 1)
   );
-  const inputTailWidth = Math.max(composerWidth - inputVisibleWidth - 6, 0);
+  const inputTailWidth = Math.max(
+    composerWidth - inputVisibleWidth - inputChromeWidth - 2,
+    0
+  );
   const imageModeLabel = `Images: ${imageMode}`;
   const statusWidth = Math.max(composerWidth - textWidth(imageModeLabel) - 3, 1);
 
@@ -83,18 +94,6 @@ export function Composer({
         </Text>
       </Box>
       <Box flexDirection="column" width={composerWidth} marginX={1}>
-        <Box height={1} overflow="hidden" paddingX={1}>
-          <Text dimColor>attachments: </Text>
-          <Text
-            color={attachments.length > 0 ? "cyan" : "gray"}
-            dimColor={attachments.length === 0}
-            wrap="truncate-end"
-          >
-            {attachments.length > 0
-              ? attachments.map((_, index) => `[Image #${index + 1}]`).join(" ")
-              : "none"}
-          </Text>
-        </Box>
         <Box height={1} backgroundColor={composerBg}>
           <Text backgroundColor={composerBg}>{" ".repeat(composerWidth)}</Text>
         </Box>
@@ -108,6 +107,13 @@ export function Composer({
           <Text color="white" backgroundColor={composerBg} bold>
             ›{" "}
           </Text>
+          {attachmentPrefix && (
+            <Box width={attachmentDisplayWidth} flexShrink={0} overflow="hidden">
+              <Text color="cyan" backgroundColor={composerBg} wrap="truncate-end">
+                {attachmentPrefix}
+              </Text>
+            </Box>
+          )}
           <Text color="white" backgroundColor={composerBg}>
             <TextInput
               value={inputText}

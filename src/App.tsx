@@ -269,6 +269,29 @@ export function App() {
     setInputText("");
   }
 
+  function attachPastedImagePaths(value: string) {
+    setStatusMsg("Importing pasted image...");
+    void importPastedImagePaths(value)
+      .then((nextAttachments) => {
+        setAttachments((current) => [...current, ...nextAttachments]);
+        setStatusMsg(
+          `${nextAttachments.length} image${nextAttachments.length === 1 ? "" : "s"} attached`
+        );
+      })
+      .catch((error: unknown) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        setStatusMsg(`Paste failed · ${detail}`);
+      });
+  }
+
+  function handleInputChange(value: string) {
+    if (!modalMode && looksLikePastedImagePath(value)) {
+      attachPastedImagePaths(value);
+      return;
+    }
+    setInputText(value);
+  }
+
   // ---- key bindings ----
   useInput((input, key) => {
     if (key.ctrl && (input === "q" || input === "c")) {
@@ -294,26 +317,7 @@ export function App() {
       return;
     }
 
-    if (!modalMode && input.length > 1 && looksLikePastedImagePath(input)) {
-      // macOS terminals commonly turn Cmd+V on an image into a temporary path.
-      // Keep that path out of the text input and promote it to an attachment.
-      setInputText(inputText);
-      setStatusMsg("Importing pasted image...");
-      void importPastedImagePaths(input)
-        .then((nextAttachments) => {
-          setAttachments((current) => [...current, ...nextAttachments]);
-          setStatusMsg(
-            `${nextAttachments.length} image${nextAttachments.length === 1 ? "" : "s"} attached`
-          );
-        })
-        .catch((error: unknown) => {
-          const detail = error instanceof Error ? error.message : String(error);
-          setStatusMsg(`Paste failed · ${detail}`);
-        });
-      return;
-    }
-
-    if (!modalMode && (key.ctrl || key.super) && input.toLowerCase() === "v") {
+    if (!modalMode && (key.ctrl || key.meta || key.super) && input.toLowerCase() === "v") {
       // ink-text-input also receives the key event; restore the controlled value
       // so the shortcut does not insert a literal "v" into the composer.
       setInputText(inputText);
@@ -716,7 +720,7 @@ export function App() {
 
       <Composer
         inputText={inputText}
-        onChange={setInputText}
+        onChange={handleInputChange}
         onSubmit={handleSubmit}
         helpMode={helpMode}
         modalMode={modalMode}
