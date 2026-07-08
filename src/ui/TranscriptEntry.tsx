@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { ImageMode } from "../config.js";
 import { compactMessage, getFirstImageSource } from "../message-format.js";
+import { linkifyUrls } from "../terminal-text.js";
 import type { ChatMessage } from "../types.js";
 import { ImagePreview } from "./ImagePreview.js";
 
@@ -39,7 +40,8 @@ export function TranscriptEntryView({
   const { message } = entry;
   const isMine = message.senderId === selfId || message.isMine;
   const sender = isMine ? "you" : message.senderName || String(message.senderId);
-  const content = compactMessage(message, { imageMode }) || "(empty)";
+  const content = compactMessage(message, { imageMode, terminalLinks: true }) || "(empty)";
+  const linkedContent = linkifyUrls(content);
   const imageSource = renderInlineImage && imageMode === "inline"
     ? getFirstImageSource(message)
     : null;
@@ -56,7 +58,7 @@ export function TranscriptEntryView({
       >
         <Text backgroundColor="#3a3a3a" wrap="wrap">
           <Text bold>› </Text>
-          {content}
+          {linkedContent}
         </Text>
         {imageSource && (
           <ImagePreview source={imageSource} height={imagePreviewHeight} />
@@ -71,7 +73,7 @@ export function TranscriptEntryView({
         <Text>{sender}</Text>
         <Text dimColor> · {formatTime(message.timestamp)}</Text>
       </Text>
-      <Text wrap="wrap">{content}</Text>
+      <Text wrap="wrap">{linkedContent}</Text>
       {imageSource && (
         <ImagePreview source={imageSource} height={imagePreviewHeight} />
       )}

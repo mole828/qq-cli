@@ -3,7 +3,7 @@ import { Box, Text } from "ink";
 import type { ChatMessage, Contact } from "../types.js";
 import type { ImageMode } from "../config.js";
 import { compactMessage, getFirstImageSource } from "../message-format.js";
-import { truncateCells } from "../terminal-text.js";
+import { linkifyUrls, truncateCells } from "../terminal-text.js";
 import { ImagePreview } from "./ImagePreview.js";
 
 function formatTime(ts: number): string {
@@ -37,7 +37,9 @@ export function MessageRow({
   const sender = isMine ? "you" : msg.senderName || String(msg.senderId);
   const nameWidth = activeSession?.type === "group" ? 12 : 10;
   const contentWidth = Math.max(termWidth - nameWidth - 17, 16);
-  const content = compactMessage(msg, { imageMode });
+  const content = linkifyUrls(
+    compactMessage(msg, { imageMode, terminalLinks: true })
+  );
   const imageSource =
     imageMode === "inline" && renderInlineImage ? getFirstImageSource(msg) : null;
 
@@ -57,7 +59,7 @@ export function MessageRow({
         </Box>
         <Box width={contentWidth}>
           <Text color="white" wrap="truncate-end">
-            {truncateCells(content || "(empty)", contentWidth)}
+            {content || "(empty)"}
           </Text>
         </Box>
       </Box>

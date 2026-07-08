@@ -26,6 +26,54 @@ function getMessageRowCost(
   return getFirstImageSource(msg) ? INLINE_IMAGE_ROW_COST : 1;
 }
 
+export function moveMessageScrollOffset(
+  messages: ChatMessage[],
+  bodyRows: number,
+  imageMode: ImageMode,
+  currentOffset: number,
+  direction: "older" | "newer"
+) {
+  const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
+  const targetRows = Math.max(Math.floor(bodyRows / 2), 1);
+  const maxOffset = getMaxMessageScrollOffset(messages, bodyRows, imageMode);
+  let nextOffset = currentOffset;
+  let movedRows = 0;
+
+  if (direction === "older") {
+    for (
+      let i = messages.length - currentOffset - 1;
+      i >= 0 && nextOffset < maxOffset && movedRows < targetRows;
+      i--
+    ) {
+      movedRows += getMessageRowCost(
+        messages[i],
+        imageMode,
+        canRenderInlineImages
+      );
+      nextOffset += 1;
+    }
+  } else {
+    for (
+      let i = messages.length - currentOffset;
+      i < messages.length && nextOffset > 0 && movedRows < targetRows;
+      i++
+    ) {
+      movedRows += getMessageRowCost(
+        messages[i],
+        imageMode,
+        canRenderInlineImages
+      );
+      nextOffset -= 1;
+    }
+  }
+
+  return clampOffset(nextOffset, maxOffset);
+}
+
+function clampOffset(value: number, max: number) {
+  return Math.min(Math.max(value, 0), max);
+}
+
 export function getMaxMessageScrollOffset(
   messages: ChatMessage[],
   bodyRows: number,

@@ -57,3 +57,42 @@ export function fillCells(value: string, width: number) {
   const clipped = truncateCells(value, width);
   return `${clipped}${" ".repeat(Math.max(width - textWidth(clipped), 0))}`;
 }
+
+const osc = "\u001B]";
+const stringTerminator = "\u001B\\";
+const blue = "\u001B[34m";
+const defaultForeground = "\u001B[39m";
+
+export function isWebUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function terminalLink(label: string, url: string, color = false) {
+  const text = color ? `${blue}${label}${defaultForeground}` : label;
+  return `${osc}8;;${url}${stringTerminator}${text}${osc}8;;${stringTerminator}`;
+}
+
+export function linkifyUrls(value: string) {
+  const hyperlink = /\u001B\]8;;[^\u001B]*\u001B\\[\s\S]*?\u001B\]8;;\u001B\\/g;
+  let offset = 0;
+  let output = "";
+
+  for (const match of value.matchAll(hyperlink)) {
+    output += linkifyPlainUrls(value.slice(offset, match.index));
+    output += match[0];
+    offset = (match.index || 0) + match[0].length;
+  }
+
+  return output + linkifyPlainUrls(value.slice(offset));
+}
+
+function linkifyPlainUrls(value: string) {
+  return value.replace(/https?:\/\/[^\s"'\u001B\u0007]+/g, (url) =>
+    isWebUrl(url) ? terminalLink(url, url) : url
+  );
+}

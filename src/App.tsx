@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { Box, Static, useInput, useStdout, useApp } from "ink";
+import { Box, useInput, useWindowSize, useApp } from "ink";
 import type { Contact, ChatMessage, MessageSegment } from "./types.js";
 import { QQClient } from "./qq-client.js";
 import {
@@ -11,16 +11,16 @@ import {
   type ImageAttachment,
 } from "./clipboard-image.js";
 import { getInitialImageMode, parseImageMode } from "./config.js";
-import { getFirstImageSource } from "./message-format.js";
 import { Composer } from "./ui/Composer.js";
 import { EmptyState } from "./ui/EmptyState.js";
 import { HelpPanel } from "./ui/HelpPanel.js";
 import { COMPOSER_ROWS, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
 import { SessionPicker } from "./ui/SessionPicker.js";
 import {
-  TranscriptEntryView,
-  type TranscriptEntry,
-} from "./ui/TranscriptEntry.js";
+  getMaxMessageScrollOffset,
+  MessageList,
+  moveMessageScrollOffset,
+} from "./ui/MessageList.js";
 
 function clamp(v: number, lo: number, hi: number) {
   return v < lo ? lo : v > hi ? hi : v;
@@ -41,13 +41,11 @@ function belongsToSession(message: ChatMessage, contact: Contact) {
   );
 }
 
-const LIVE_TAIL_SIZE = 3;
-
 export function App() {
-  const { stdout } = useStdout();
+  const { columns, rows } = useWindowSize();
   const { exit } = useApp();
-  const termWidth = stdout?.columns || 80;
-  const termHeight = stdout?.rows || 24;
+  const termWidth = columns || 80;
+  const termHeight = rows || 24;
   // Ink clears the terminal when an interactive frame reaches the full viewport
   // height. Keep one row unused so picker/session transitions preserve scrollback.
   const bodyRows = Math.max(
@@ -61,9 +59,7 @@ export function App() {
   const historyRequestedRef = useRef(new Set<string>());
   const messagesRef = useRef<ChatMessage[]>([]);
   const sessionGenerationRef = useRef(0);
-  const transcriptReadyRef = useRef<string | null>(null);
-  const transcriptKeysRef = useRef(new Set<string>());
-  const liveEntriesRef = useRef<TranscriptEntry[]>([]);
+  const messageScrollOffsetRef = useRef(0);
   const attachmentsRef = useRef<ImageAttachment[]>([]);
 
   const [connected, setConnected] = useState(false);
@@ -71,8 +67,7 @@ export function App() {
   const [nickname, setNickname] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
-  const [liveEntries, setLiveEntries] = useState<TranscriptEntry[]>([]);
+  const [messageScrollOffset, setMessageScrollOffset] = useState(0);
   const [activeSession, setActiveSession] = useState<Contact | null>(null);
   const [inputText, setInputText] = useState("");
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
@@ -87,60 +82,13 @@ export function App() {
   const [modalHighlight, setModalHighlight] = useState(0);
   const [modalScrollOff, setModalScrollOff] = useState(0);
 
-  function appendMessagesToTranscript(items: ChatMessage[]) {
-    const next: TranscriptEntry[] = [];
-    for (const message of items) {
-      const key = messageKey(message);
-      if (transcriptKeysRef.current.has(key)) continue;
-      transcriptKeysRef.current.add(key);
-      next.push({
-        key,
-        type: "message",
-        message,
-      });
-    }
-    if (next.length === 0) return;
-
-    const combined = [...liveEntriesRef.current, ...next];
-    const splitAt = Math.max(combined.length - LIVE_TAIL_SIZE, 0);
-    const entriesToArchive = combined.slice(0, splitAt);
-    const nextLiveEntries = combined.slice(splitAt);
-    liveEntriesRef.current = nextLiveEntries;
-    setLiveEntries(nextLiveEntries);
-    if (entriesToArchive.length > 0) {
-      setTranscript((current) => [...current, ...entriesToArchive]);
-    }
-  }
-
-  function archiveOldestLiveEntry() {
-    const [entry, ...remaining] = liveEntriesRef.current;
-    if (!entry) return;
-    liveEntriesRef.current = remaining;
-    setLiveEntries(remaining);
-    setTranscript((current) => [...current, entry]);
-  }
-
-  function archiveAllLiveEntries() {
-    const entries = liveEntriesRef.current;
-    if (entries.length === 0) return;
-    liveEntriesRef.current = [];
-    setLiveEntries([]);
-    setTranscript((current) => [...current, ...entries]);
-  }
-
-  useEffect(() => {
-    const oldest = liveEntries[0];
-    if (!oldest) return;
-    const timer = setTimeout(() => {
-      if (liveEntriesRef.current[0]?.key !== oldest.key) return;
-      archiveOldestLiveEntry();
-    }, 8000);
-    return () => clearTimeout(timer);
-  }, [liveEntries[0]?.key]);
-
   useEffect(() => {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
+
+  useEffect(() => {
+    messageScrollOffsetRef.current = messageScrollOffset;
+  }, [messageScrollOffset]);
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -172,8 +120,8 @@ export function App() {
       setMessages(messagesRef.current);
       const current = activeSessionRef.current;
       if (current && belongsToSession(msg, current)) {
-        if (transcriptReadyRef.current === sessionKey(current)) {
-          appendMessagesToTranscript([msg]);
+        if (messageScrollOffsetRef.current > 0) {
+          setMessageScrollOffset((offset) => offset + 1);
         }
         return;
       }
@@ -458,6 +406,51 @@ export function App() {
     }
 
     // ---- normal mode keys ----
+    const sessionMessages = activeSession
+      ? messages.filter((message) => belongsToSession(message, activeSession))
+      : [];
+    if (key.upArrow && activeSession) {
+      const maxOffset = getMaxMessageScrollOffset(
+        sessionMessages,
+        bodyRows,
+        imageMode
+      );
+      setMessageScrollOffset((offset) => Math.min(offset + 1, maxOffset));
+      return;
+    }
+    if (key.downArrow && activeSession) {
+      setMessageScrollOffset((offset) => Math.max(offset - 1, 0));
+      return;
+    }
+    if (key.pageUp && activeSession) {
+      setMessageScrollOffset((offset) =>
+        moveMessageScrollOffset(
+          sessionMessages,
+          bodyRows,
+          imageMode,
+          offset,
+          "older"
+        )
+      );
+      return;
+    }
+    if (key.pageDown && activeSession) {
+      setMessageScrollOffset((offset) =>
+        moveMessageScrollOffset(
+          sessionMessages,
+          bodyRows,
+          imageMode,
+          offset,
+          "newer"
+        )
+      );
+      return;
+    }
+    if (key.end && activeSession) {
+      setMessageScrollOffset(0);
+      return;
+    }
+
     if (key.tab) {
       if (contacts.length > 0) {
         const next = (() => {
@@ -476,10 +469,10 @@ export function App() {
   function handleSession(id: number) {
     const contact = contacts.find((c) => c.id === id);
     if (contact) {
-      archiveAllLiveEntries();
       const generation = sessionGenerationRef.current + 1;
       sessionGenerationRef.current = generation;
-      transcriptReadyRef.current = null;
+      messageScrollOffsetRef.current = 0;
+      setMessageScrollOffset(0);
       activeSessionRef.current = contact;
       setActiveSession(contact);
       setUnreadCounts((prev) => {
@@ -526,8 +519,6 @@ export function App() {
     const loadedCount = shouldRequestHistory
       ? history?.length || 0
       : sessionMessages.length;
-    appendMessagesToTranscript(sessionMessages);
-    transcriptReadyRef.current = key;
     setStatusMsg(
       history === null
         ? `History unavailable · ${contact.name}`
@@ -660,7 +651,7 @@ export function App() {
         messagesRef.current = [...messagesRef.current, sent];
         setMessages(messagesRef.current);
       }
-      appendMessagesToTranscript([sent]);
+      setMessageScrollOffset(0);
       await Promise.all(pendingAttachments.map(removeAttachment));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -669,47 +660,24 @@ export function App() {
   }
 
   const unreadTotal = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
-  const liveImageSources = liveEntries.map((entry) =>
-    imageMode === "inline" ? getFirstImageSource(entry.message) : null
-  );
-  const liveImageCount = liveImageSources.filter(Boolean).length;
-  const liveTextRows = liveEntries.reduce(
-    (rows, entry) => rows + (entry.message.isMine || entry.message.senderId === selfId ? 2 : 3),
-    0
-  );
-  const livePreviewHeight = liveImageCount > 0
-    ? Math.min(
-        10,
-        Math.max(Math.floor((bodyRows - liveTextRows) / liveImageCount), 2)
-      )
-    : 0;
-  const liveRows = Math.min(
+  const activeMessages = activeSession
+    ? messages.filter((message) => belongsToSession(message, activeSession))
+    : [];
+  const maxMessageScrollOffset = getMaxMessageScrollOffset(
+    activeMessages,
     bodyRows,
-    liveTextRows + liveImageCount * livePreviewHeight
+    imageMode
   );
-  const normalBodyRows = activeSession
-    ? liveEntries.length > 0
-      ? Math.max(liveRows, 1)
-      : 1
-    : bodyRows;
+  const effectiveMessageScrollOffset = Math.min(
+    messageScrollOffset,
+    maxMessageScrollOffset
+  );
 
   return (
     <Box flexDirection="column">
-      <Static items={transcript}>
-        {(entry) => (
-          <TranscriptEntryView
-            key={entry.key}
-            entry={entry}
-            selfId={selfId}
-            termWidth={termWidth}
-            imageMode={imageMode}
-          />
-        )}
-      </Static>
-
       <Box
         flexDirection="column"
-        height={helpMode || modalMode ? bodyRows : normalBodyRows}
+        height={bodyRows}
         flexShrink={1}
         overflow="hidden"
       >
@@ -733,20 +701,16 @@ export function App() {
             connected={connected}
             termWidth={termWidth}
           />
-        ) : liveEntries.length > 0 ? (
-          <>
-            {liveEntries.map((entry, index) => (
-              <TranscriptEntryView
-                key={entry.key}
-                entry={entry}
-                selfId={selfId}
-                termWidth={termWidth}
-                imageMode={imageMode}
-                renderInlineImage={Boolean(liveImageSources[index])}
-                imagePreviewHeight={livePreviewHeight}
-              />
-            ))}
-          </>
+        ) : activeMessages.length > 0 ? (
+          <MessageList
+            messages={activeMessages}
+            selfId={selfId}
+            activeSession={activeSession}
+            termWidth={termWidth}
+            bodyRows={bodyRows}
+            imageMode={imageMode}
+            scrollOffset={effectiveMessageScrollOffset}
+          />
         ) : null}
       </Box>
 
