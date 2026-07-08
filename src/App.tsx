@@ -5,9 +5,8 @@ import { QQClient } from "./qq-client.js";
 import { getInitialImageMode, parseImageMode } from "./config.js";
 import { Composer } from "./ui/Composer.js";
 import { EmptyState } from "./ui/EmptyState.js";
-import { Header } from "./ui/Header.js";
 import { HelpPanel } from "./ui/HelpPanel.js";
-import { COMPOSER_ROWS, HEADER_HEIGHT } from "./ui/layout.js";
+import { COMPOSER_ROWS, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
 import { SessionPicker } from "./ui/SessionPicker.js";
 import {
   TranscriptEntryView,
@@ -38,14 +37,19 @@ export function App() {
   const { exit } = useApp();
   const termWidth = stdout?.columns || 80;
   const termHeight = stdout?.rows || 24;
-  const bodyRows = Math.max(termHeight - COMPOSER_ROWS - HEADER_HEIGHT, 1);
+  // Ink clears the terminal when an interactive frame reaches the full viewport
+  // height. Keep one row unused so picker/session transitions preserve scrollback.
+  const bodyRows = Math.max(
+    termHeight - COMPOSER_ROWS - TERMINAL_GUTTER_ROWS,
+    1
+  );
 
   const qqRef = useRef<QQClient | null>(null);
   const loadedRef = useRef(false);
   const activeSessionRef = useRef<Contact | null>(null);
   const historyRequestedRef = useRef(new Set<string>());
   const messagesRef = useRef<ChatMessage[]>([]);
-  const resumeGenerationRef = useRef(0);
+  const sessionGenerationRef = useRef(0);
   const transcriptReadyRef = useRef<string | null>(null);
   const transcriptKeysRef = useRef(new Set<string>());
 
@@ -75,7 +79,7 @@ export function App() {
       if (transcriptKeysRef.current.has(key)) continue;
       transcriptKeysRef.current.add(key);
       next.push({
-        key: `${resumeGenerationRef.current}:${key}`,
+        key,
         type: "message",
         message,
       });
@@ -198,7 +202,7 @@ export function App() {
   ]);
 
   const maxModalHeight = Math.max(
-    termHeight - HEADER_HEIGHT - COMPOSER_ROWS - 5,
+    bodyRows - 5,
     3
   );
 
@@ -356,10 +360,9 @@ export function App() {
   function handleSession(id: number) {
     const contact = contacts.find((c) => c.id === id);
     if (contact) {
-      const generation = resumeGenerationRef.current + 1;
-      resumeGenerationRef.current = generation;
+      const generation = sessionGenerationRef.current + 1;
+      sessionGenerationRef.current = generation;
       transcriptReadyRef.current = null;
-      transcriptKeysRef.current = new Set();
       activeSessionRef.current = contact;
       setActiveSession(contact);
       setUnreadCounts((prev) => {
@@ -395,7 +398,7 @@ export function App() {
 
     const active = activeSessionRef.current;
     if (
-      generation !== resumeGenerationRef.current ||
+      generation !== sessionGenerationRef.current ||
       active?.id !== contact.id ||
       active.type !== contact.type
     ) return;
@@ -403,24 +406,15 @@ export function App() {
     const sessionMessages = messagesRef.current
       .filter((message) => belongsToSession(message, contact))
       .sort((a, b) => a.timestamp - b.timestamp);
-    const resumedCount = shouldRequestHistory
+    const loadedCount = shouldRequestHistory
       ? history?.length || 0
       : sessionMessages.length;
-    setTranscript((current) => [
-      ...current,
-      {
-        key: `resume:${generation}`,
-        type: "resume",
-        session: contact,
-        historyCount: resumedCount,
-      },
-    ]);
     appendMessagesToTranscript(sessionMessages);
     transcriptReadyRef.current = key;
     setStatusMsg(
       history === null
         ? `History unavailable · ${contact.name}`
-        : `${resumedCount} history entries · ${contact.name}`
+        : `${loadedCount} history entries · ${contact.name}`
     );
   }
 
@@ -550,13 +544,6 @@ export function App() {
         )}
       </Static>
 
-      <Header
-        connected={connected}
-        activeSession={activeSession}
-        unreadTotal={unreadTotal}
-        termWidth={termWidth}
-      />
-
       <Box
         flexDirection="column"
         height={helpMode || modalMode ? bodyRows : normalBodyRows}
@@ -592,7 +579,7 @@ export function App() {
         onSubmit={handleSubmit}
         helpMode={helpMode}
         modalMode={modalMode}
-        hasActiveSession={Boolean(activeSession)}
+        activeSession={activeSession}
         statusMsg={statusMsg}
         connected={connected}
         unreadTotal={unreadTotal}
