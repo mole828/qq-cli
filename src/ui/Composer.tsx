@@ -15,7 +15,6 @@ interface ComposerProps {
   connected: boolean;
   unreadTotal: number;
   termWidth: number;
-  messageScrollOffset: number;
 }
 
 export function Composer({
@@ -29,21 +28,18 @@ export function Composer({
   connected,
   unreadTotal,
   termWidth,
-  messageScrollOffset,
 }: ComposerProps) {
-  const divider = termWidth > 60 ? "─".repeat(termWidth) : "────";
-  const composerWidth = Math.max(termWidth, 30);
+  const divider = "─".repeat(Math.max(termWidth - 2, 4));
+  const composerWidth = Math.max(termWidth - 2, 12);
   const composerHint = helpMode
     ? "Esc"
     : modalMode
     ? "↑↓ PgUp PgDn"
-    : "↑↓ scroll · /help /session /contacts /images";
+    : "/help /session /contacts /images";
   const composerStatus = helpMode
     ? "Help"
     : modalMode
     ? `Enter=open · Esc=close · ${unreadTotal} unread`
-    : messageScrollOffset > 0
-    ? `${messageScrollOffset} newer messages below`
     : statusMsg || (connected ? "Ready" : "Connecting");
   const composerBg = "#3a3a3a";
   const composerStatusLine = fillCells(
@@ -55,13 +51,13 @@ export function Composer({
     : modalMode
     ? "Filter sessions, then Enter"
     : hasActiveSession
-    ? "Input for current session"
+    ? "Message current session"
     : "Use /session to choose a session";
   const inputVisibleWidth = Math.min(
     Math.max(textWidth(inputText || composerPlaceholder) + 1, 1),
-    composerWidth - 4
+    Math.max(composerWidth - 6, 1)
   );
-  const inputTailWidth = Math.max(composerWidth - inputVisibleWidth - 4, 0);
+  const inputTailWidth = Math.max(composerWidth - inputVisibleWidth - 6, 0);
 
   return (
     <Box
@@ -70,13 +66,22 @@ export function Composer({
       overflow="hidden"
       flexDirection="column"
     >
-      <Box height={1}>
+      <Box height={1} paddingX={1}>
         <Text color="gray" dimColor>
           {divider}
         </Text>
       </Box>
-      <Box flexDirection="column" width={composerWidth} paddingX={1} paddingY={0}>
-        <Box flexDirection="row" height={1} overflow="hidden">
+      <Box flexDirection="column" width={composerWidth} marginX={1}>
+        <Box height={1} backgroundColor={composerBg}>
+          <Text backgroundColor={composerBg}>{" ".repeat(composerWidth)}</Text>
+        </Box>
+        <Box
+          flexDirection="row"
+          height={1}
+          overflow="hidden"
+          paddingX={1}
+          backgroundColor={composerBg}
+        >
           <Text color="white" backgroundColor={composerBg} bold>
             ›{" "}
           </Text>
@@ -93,10 +98,11 @@ export function Composer({
             {" ".repeat(inputTailWidth)}
           </Text>
         </Box>
-        <Box justifyContent="space-between" height={1} overflow="hidden">
+        <Box height={1} backgroundColor={composerBg}>
+          <Text backgroundColor={composerBg}>{" ".repeat(composerWidth)}</Text>
+        </Box>
+        <Box justifyContent="space-between" height={1} overflow="hidden" paddingX={1}>
           <Text
-            color="white"
-            backgroundColor={composerBg}
             dimColor
             wrap="truncate-end"
           >

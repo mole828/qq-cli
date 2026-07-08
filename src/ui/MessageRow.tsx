@@ -35,23 +35,23 @@ export function MessageRow({
   const isMine = msg.senderId === selfId;
   const time = formatTime(msg.timestamp);
   const sender = isMine ? "you" : msg.senderName || String(msg.senderId);
-  const nameWidth = activeSession?.type === "group" ? 16 : 10;
-  const contentWidth = Math.max(termWidth - nameWidth - 15, 16);
+  const nameWidth = activeSession?.type === "group" ? 12 : 10;
+  const contentWidth = Math.max(termWidth - nameWidth - 17, 16);
   const content = compactMessage(msg, { imageMode });
   const imageSource =
     imageMode === "inline" && renderInlineImage ? getFirstImageSource(msg) : null;
 
   return (
     <Box key={`${msg.id}-${index}`} flexDirection="column" overflow="hidden">
-      <Box flexDirection="row" paddingX={1} height={1} overflow="hidden">
+      <Box flexDirection="row" paddingX={2} height={1} overflow="hidden">
         <Box width={2}>
-          <Text color={isMine ? "green" : "gray"}>{isMine ? "•" : "·"}</Text>
+          <Text color="green">{isMine ? "•" : " "}</Text>
         </Box>
         <Box width={7}>
           <Text dimColor>{time}</Text>
         </Box>
         <Box width={nameWidth + 1}>
-          <Text color={isMine ? "green" : "cyan"} wrap="truncate-end">
+          <Text color={isMine ? "green" : "white"} wrap="truncate-end">
             {truncateCells(sender, nameWidth)}
           </Text>
         </Box>
@@ -62,7 +62,7 @@ export function MessageRow({
         </Box>
       </Box>
       {imageSource && (
-        <Box paddingLeft={nameWidth + 10} height={10} overflow="hidden">
+        <Box paddingLeft={nameWidth + 12} height={10} overflow="hidden">
           <ImagePreview source={imageSource} />
         </Box>
       )}

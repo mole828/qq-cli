@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { Box, useInput, useStdout, useApp } from "ink";
+import { Box, Static, useInput, useStdout, useApp } from "ink";
 import type { Contact, ChatMessage } from "./types.js";
 import { QQClient } from "./qq-client.js";
 import { getInitialImageMode, parseImageMode } from "./config.js";
@@ -8,14 +8,29 @@ import { EmptyState } from "./ui/EmptyState.js";
 import { Header } from "./ui/Header.js";
 import { HelpPanel } from "./ui/HelpPanel.js";
 import { COMPOSER_ROWS, HEADER_HEIGHT } from "./ui/layout.js";
-import {
-  getMaxMessageScrollOffset,
-  MessageList,
-} from "./ui/MessageList.js";
 import { SessionPicker } from "./ui/SessionPicker.js";
+import {
+  TranscriptEntryView,
+  type TranscriptEntry,
+} from "./ui/TranscriptEntry.js";
 
 function clamp(v: number, lo: number, hi: number) {
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+function sessionKey(contact: Contact) {
+  return `${contact.type}:${contact.id}`;
+}
+
+function messageKey(message: ChatMessage) {
+  return `${message.chatType}:${message.contactId}:${message.id}`;
+}
+
+function belongsToSession(message: ChatMessage, contact: Contact) {
+  return (
+    message.chatType === (contact.type === "group" ? "group" : "private") &&
+    message.contactId === contact.id
+  );
 }
 
 export function App() {
@@ -28,21 +43,24 @@ export function App() {
   const qqRef = useRef<QQClient | null>(null);
   const loadedRef = useRef(false);
   const activeSessionRef = useRef<Contact | null>(null);
-  const messageScrollOffsetRef = useRef(0);
   const historyRequestedRef = useRef(new Set<string>());
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const resumeGenerationRef = useRef(0);
+  const transcriptReadyRef = useRef<string | null>(null);
+  const transcriptKeysRef = useRef(new Set<string>());
 
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(0);
   const [nickname, setNickname] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [activeSession, setActiveSession] = useState<Contact | null>(null);
   const [inputText, setInputText] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [helpMode, setHelpMode] = useState(false);
   const [imageMode, setImageMode] = useState(() => getInitialImageMode());
-  const [messageScrollOffset, setMessageScrollOffset] = useState(0);
 
   // ---- scrollable picker modal ----
   const [modalMode, setModalMode] = useState(false);
@@ -50,33 +68,26 @@ export function App() {
   const [modalHighlight, setModalHighlight] = useState(0);
   const [modalScrollOff, setModalScrollOff] = useState(0);
 
-  const activeMessages = activeSession
-    ? messages.filter(
-        (m) =>
-          m.chatType === (activeSession.type === "group" ? "group" : "private") &&
-          (m.contactId === activeSession.id ||
-            (m.chatType === "group" && m.group_id === activeSession.id))
-      )
-    : [];
-  const maxMessageScrollOffset = getMaxMessageScrollOffset(
-    activeMessages,
-    bodyRows,
-    imageMode
-  );
+  function appendMessagesToTranscript(items: ChatMessage[]) {
+    const next: TranscriptEntry[] = [];
+    for (const message of items) {
+      const key = messageKey(message);
+      if (transcriptKeysRef.current.has(key)) continue;
+      transcriptKeysRef.current.add(key);
+      next.push({
+        key: `${resumeGenerationRef.current}:${key}`,
+        type: "message",
+        message,
+      });
+    }
+    if (next.length > 0) {
+      setTranscript((current) => [...current, ...next]);
+    }
+  }
 
   useEffect(() => {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
-
-  useEffect(() => {
-    messageScrollOffsetRef.current = messageScrollOffset;
-  }, [messageScrollOffset]);
-
-  useEffect(() => {
-    setMessageScrollOffset((offset) =>
-      Math.min(offset, maxMessageScrollOffset)
-    );
-  }, [maxMessageScrollOffset]);
 
   // ---- WebSocket connection ----
   useEffect(() => {
@@ -92,25 +103,19 @@ export function App() {
     });
 
     client.onMessage((msg) => {
-      setMessages((prev) => [...prev, msg]);
+      messagesRef.current = [...messagesRef.current, msg];
+      setMessages(messagesRef.current);
       const current = activeSessionRef.current;
-      if (
-        current?.id === msg.contactId &&
-        (current.type === "group" ? "group" : "private") === msg.chatType &&
-        messageScrollOffsetRef.current > 0
-      ) {
-        setMessageScrollOffset((offset) => offset + 1);
+      if (current && belongsToSession(msg, current)) {
+        if (transcriptReadyRef.current === sessionKey(current)) {
+          appendMessagesToTranscript([msg]);
+        }
+        return;
       }
-      if (
-        !current ||
-        current.id !== msg.contactId ||
-        (current.type === "group" ? "group" : "private") !== msg.chatType
-      ) {
-        setUnreadCounts((prev) => ({
-          ...prev,
-          [msg.contactId]: (prev[msg.contactId] || 0) + 1,
-        }));
-      }
+      setUnreadCounts((prev) => ({
+        ...prev,
+        [msg.contactId]: (prev[msg.contactId] || 0) + 1,
+      }));
     });
 
     client.connect();
@@ -346,68 +351,77 @@ export function App() {
       return;
     }
 
-    if (key.upArrow) {
-      setMessageScrollOffset((offset) =>
-        clamp(
-          offset + 1,
-          0,
-          maxMessageScrollOffset
-        )
-      );
-      return;
-    }
-
-    if (key.downArrow) {
-      setMessageScrollOffset((offset) => Math.max(offset - 1, 0));
-      return;
-    }
   });
 
   function handleSession(id: number) {
     const contact = contacts.find((c) => c.id === id);
     if (contact) {
+      const generation = resumeGenerationRef.current + 1;
+      resumeGenerationRef.current = generation;
+      transcriptReadyRef.current = null;
+      transcriptKeysRef.current = new Set();
+      activeSessionRef.current = contact;
       setActiveSession(contact);
-      setMessageScrollOffset(0);
       setUnreadCounts((prev) => {
         if (!prev[contact.id]) return prev;
         const next = { ...prev };
         delete next[contact.id];
         return next;
       });
-      void loadHistory(contact);
+      void loadHistory(contact, generation);
     }
   }
 
-  async function loadHistory(contact: Contact) {
-    const key = `${contact.type}:${contact.id}`;
-    if (historyRequestedRef.current.has(key)) {
-      setStatusMsg(`Session ${contact.name}`);
-      return;
-    }
-    historyRequestedRef.current.add(key);
+  async function loadHistory(contact: Contact, generation: number) {
+    const key = sessionKey(contact);
+    const shouldRequestHistory = !historyRequestedRef.current.has(key);
+    if (shouldRequestHistory) historyRequestedRef.current.add(key);
     setStatusMsg(`Loading history · ${contact.name}`);
 
     const client = qqRef.current;
-    const history = client ? await client.getChatHistory(contact, 20) : null;
+    const history = shouldRequestHistory && client
+      ? await client.getChatHistory(contact, 20)
+      : [];
     if (history) {
-      setMessages((current) => {
-        const merged = new Map<string, ChatMessage>();
-        for (const message of [...history, ...current]) {
-          const messageKey = `${message.chatType}:${message.contactId}:${message.id}`;
-          merged.set(messageKey, message);
-        }
-        return [...merged.values()].sort((a, b) => a.timestamp - b.timestamp);
-      });
+      const merged = new Map<string, ChatMessage>();
+      for (const message of [...history, ...messagesRef.current]) {
+        merged.set(messageKey(message), message);
+      }
+      messagesRef.current = [...merged.values()].sort(
+        (a, b) => a.timestamp - b.timestamp
+      );
+      setMessages(messagesRef.current);
     }
 
     const active = activeSessionRef.current;
-    if (active?.id === contact.id && active.type === contact.type) {
-      setStatusMsg(
-        history === null
-          ? `History unavailable · ${contact.name}`
-          : `${history.length} history entries · ${contact.name}`
-      );
-    }
+    if (
+      generation !== resumeGenerationRef.current ||
+      active?.id !== contact.id ||
+      active.type !== contact.type
+    ) return;
+
+    const sessionMessages = messagesRef.current
+      .filter((message) => belongsToSession(message, contact))
+      .sort((a, b) => a.timestamp - b.timestamp);
+    const resumedCount = shouldRequestHistory
+      ? history?.length || 0
+      : sessionMessages.length;
+    setTranscript((current) => [
+      ...current,
+      {
+        key: `resume:${generation}`,
+        type: "resume",
+        session: contact,
+        historyCount: resumedCount,
+      },
+    ]);
+    appendMessagesToTranscript(sessionMessages);
+    transcriptReadyRef.current = key;
+    setStatusMsg(
+      history === null
+        ? `History unavailable · ${contact.name}`
+        : `${resumedCount} history entries · ${contact.name}`
+    );
   }
 
   // ---- commands ----
@@ -511,28 +525,44 @@ export function App() {
         isMine: true,
         group_id: activeSession.type === "group" ? activeSession.id : undefined,
       };
-      setMessages((prev) => [...prev, sent]);
-      setMessageScrollOffset(0);
+      messagesRef.current = [...messagesRef.current, sent];
+      setMessages(messagesRef.current);
+      appendMessagesToTranscript([sent]);
     } catch {
       setStatusMsg("Send failed");
     }
   }
 
   const unreadTotal = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
+  const normalBodyRows = activeSession ? 1 : bodyRows;
 
   return (
-    <Box flexDirection="column" height={termHeight}>
+    <Box flexDirection="column">
+      <Static items={transcript}>
+        {(entry) => (
+          <TranscriptEntryView
+            key={entry.key}
+            entry={entry}
+            selfId={selfId}
+            termWidth={termWidth}
+            imageMode={imageMode}
+          />
+        )}
+      </Static>
+
       <Header
         connected={connected}
-        nickname={nickname}
-        contactsCount={contacts.length}
         activeSession={activeSession}
         unreadTotal={unreadTotal}
-        imageMode={imageMode}
         termWidth={termWidth}
       />
 
-      <Box flexDirection="column" height={bodyRows} flexShrink={1} overflow="hidden">
+      <Box
+        flexDirection="column"
+        height={helpMode || modalMode ? bodyRows : normalBodyRows}
+        flexShrink={1}
+        overflow="hidden"
+      >
         {helpMode ? (
           <HelpPanel />
         ) : modalMode ? (
@@ -547,23 +577,13 @@ export function App() {
             termWidth={termWidth}
             unreadTotal={unreadTotal}
           />
-        ) : activeMessages.length === 0 ? (
+        ) : !activeSession ? (
           <EmptyState
             activeSession={activeSession}
             connected={connected}
             termWidth={termWidth}
           />
-        ) : (
-          <MessageList
-            messages={activeMessages}
-            selfId={selfId}
-            activeSession={activeSession}
-            termWidth={termWidth}
-            bodyRows={bodyRows}
-            imageMode={imageMode}
-            scrollOffset={messageScrollOffset}
-          />
-        )}
+        ) : null}
       </Box>
 
       <Composer
@@ -577,7 +597,6 @@ export function App() {
         connected={connected}
         unreadTotal={unreadTotal}
         termWidth={termWidth}
-        messageScrollOffset={messageScrollOffset}
       />
     </Box>
   );
