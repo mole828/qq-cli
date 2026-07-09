@@ -53,6 +53,46 @@ export function truncateCells(value: string, max: number) {
   return `${result}…`;
 }
 
+export function wrapCells(value: string, max: number, maxLines: number) {
+  const text = singleLine(value);
+  if (max <= 0 || maxLines <= 0) return [];
+  if (!text) return [""];
+
+  const lines: string[] = [];
+  let line = "";
+  let width = 0;
+
+  const chars = Array.from(text);
+  for (let i = 0; i < chars.length; i++) {
+    const char = chars[i];
+    const next = width + charWidth(char);
+    if (next > max && line) {
+      lines.push(line);
+      line = "";
+      width = 0;
+      if (lines.length === maxLines) {
+        const remaining = chars.slice(i).join("");
+        lines[lines.length - 1] = truncateCells(
+          `${lines[lines.length - 1]}${remaining}`,
+          max
+        );
+        return lines;
+      }
+    }
+    line += char;
+    width += charWidth(char);
+  }
+
+  if (line || lines.length === 0) lines.push(line);
+  if (lines.length > maxLines) {
+    return [
+      ...lines.slice(0, maxLines - 1),
+      truncateCells(lines.slice(maxLines - 1).join(""), max),
+    ];
+  }
+  return lines;
+}
+
 export function fillCells(value: string, width: number) {
   const clipped = truncateCells(value, width);
   return `${clipped}${" ".repeat(Math.max(width - textWidth(clipped), 0))}`;

@@ -433,6 +433,8 @@ export function App() {
       const maxOffset = getMaxMessageScrollOffset(
         sessionMessages,
         bodyRows,
+        selfId,
+        termWidth,
         imageMode
       );
       setMessageScrollOffset((offset) => Math.min(offset + 1, maxOffset));
@@ -447,6 +449,8 @@ export function App() {
         moveMessageScrollOffset(
           sessionMessages,
           bodyRows,
+          selfId,
+          termWidth,
           imageMode,
           offset,
           "older"
@@ -459,6 +463,8 @@ export function App() {
         moveMessageScrollOffset(
           sessionMessages,
           bodyRows,
+          selfId,
+          termWidth,
           imageMode,
           offset,
           "newer"
@@ -697,6 +703,8 @@ export function App() {
   const maxMessageScrollOffset = getMaxMessageScrollOffset(
     activeMessages,
     bodyRows,
+    selfId,
+    termWidth,
     imageMode
   );
   const effectiveMessageScrollOffset = Math.min(

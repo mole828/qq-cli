@@ -3,8 +3,10 @@ import { Box, Text } from "ink";
 import type { ChatMessage, Contact } from "../types.js";
 import type { ImageMode } from "../config.js";
 import { compactMessage, getFirstImageSource } from "../message-format.js";
-import { linkifyUrls, truncateCells } from "../terminal-text.js";
+import { linkifyUrls, truncateCells, wrapCells } from "../terminal-text.js";
 import { ImagePreview } from "./ImagePreview.js";
+
+const MAX_BODY_LINES = 3;
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
@@ -27,7 +29,6 @@ export function MessageRow({
   msg,
   index,
   selfId,
-  activeSession,
   termWidth,
   imageMode,
   renderInlineImage,
@@ -35,36 +36,98 @@ export function MessageRow({
   const isMine = msg.senderId === selfId;
   const time = formatTime(msg.timestamp);
   const sender = isMine ? "you" : msg.senderName || String(msg.senderId);
-  const nameWidth = activeSession?.type === "group" ? 12 : 10;
-  const contentWidth = Math.max(termWidth - nameWidth - 17, 16);
-  const content = linkifyUrls(
-    compactMessage(msg, { imageMode, terminalLinks: true })
-  );
+  const rowWidth = Math.max(termWidth - 2, 12);
+  const rawContent = compactMessage(msg, { imageMode });
+  const linkedContent =
+    compactMessage(msg, { imageMode, terminalLinks: true }) || "(empty)";
   const imageSource =
     imageMode === "inline" && renderInlineImage ? getFirstImageSource(msg) : null;
 
-  return (
-    <Box key={`${msg.id}-${index}`} flexDirection="column" overflow="hidden">
-      <Box flexDirection="row" paddingX={2} height={1} overflow="hidden">
-        <Box width={2}>
-          <Text color="green">{isMine ? "•" : " "}</Text>
+  if (isMine) {
+    const promptBg = "#3a3a3a";
+    const promptWidth = Math.max(rowWidth - 4, 8);
+    const contentLines = wrapCells(
+      rawContent || "(empty)",
+      promptWidth,
+      MAX_BODY_LINES
+    );
+    const renderLines = contentLines.length === 1
+      ? [linkedContent]
+      : contentLines.map((line) => linkifyUrls(line));
+
+    return (
+      <Box
+        key={`${msg.id}-${index}`}
+        flexDirection="column"
+        overflow="hidden"
+        marginBottom={1}
+      >
+        <Box
+          flexDirection="column"
+          marginX={1}
+          paddingX={1}
+          overflow="hidden"
+          backgroundColor={promptBg}
+          width={rowWidth}
+        >
+          {renderLines.map((line, lineIndex) => (
+            <Text
+              key={lineIndex}
+              color="white"
+              backgroundColor={promptBg}
+              wrap="truncate-end"
+            >
+              <Text bold>{lineIndex === 0 ? "› " : "  "}</Text>
+              {line}
+            </Text>
+          ))}
         </Box>
-        <Box width={7}>
-          <Text dimColor>{time}</Text>
-        </Box>
-        <Box width={nameWidth + 1}>
-          <Text color={isMine ? "green" : "white"} wrap="truncate-end">
-            {truncateCells(sender, nameWidth)}
-          </Text>
-        </Box>
-        <Box width={contentWidth}>
-          <Text color="white" wrap="truncate-end">
-            {content || "(empty)"}
-          </Text>
-        </Box>
+        {imageSource && (
+          <Box paddingLeft={4} height={10} overflow="hidden">
+            <ImagePreview source={imageSource} />
+          </Box>
+        )}
       </Box>
+    );
+  }
+
+  const senderWidth = Math.max(Math.min(Math.floor(termWidth * 0.32), 28), 10);
+  const bodyWidth = Math.max(termWidth - 8, 16);
+  const contentLines = wrapCells(
+    rawContent || "(empty)",
+    bodyWidth,
+    MAX_BODY_LINES
+  );
+  const renderLines = contentLines.length === 1
+    ? [linkedContent]
+    : contentLines.map((line) => linkifyUrls(line));
+
+  return (
+    <Box
+      key={`${msg.id}-${index}`}
+      flexDirection="column"
+      overflow="hidden"
+      paddingX={2}
+      marginBottom={1}
+    >
+      <Box flexDirection="row" height={1} overflow="hidden">
+        <Box width={2} flexShrink={0}>
+          <Text dimColor>•</Text>
+        </Box>
+        <Box width={senderWidth + 1} flexShrink={0}>
+          <Text color="white" bold wrap="truncate-end">
+            {truncateCells(sender, senderWidth)}
+          </Text>
+        </Box>
+        <Text dimColor>· {time}</Text>
+      </Box>
+      {renderLines.map((line, lineIndex) => (
+        <Text key={lineIndex} color="white" wrap="truncate-end">
+          {line}
+        </Text>
+      ))}
       {imageSource && (
-        <Box paddingLeft={nameWidth + 12} height={10} overflow="hidden">
+        <Box paddingLeft={2} height={10} overflow="hidden">
           <ImagePreview source={imageSource} />
         </Box>
       )}

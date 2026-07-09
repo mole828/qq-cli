@@ -1,10 +1,12 @@
 import React from "react";
 import type { ChatMessage, Contact } from "../types.js";
 import type { ImageMode } from "../config.js";
-import { getFirstImageSource } from "../message-format.js";
+import { compactMessage, getFirstImageSource } from "../message-format.js";
+import { wrapCells } from "../terminal-text.js";
 import { IMAGE_PREVIEW_HEIGHT } from "./ImagePreview.js";
 import { MessageRow } from "./MessageRow.js";
 
+const MAX_BODY_LINES = 3;
 const INLINE_IMAGE_ROW_COST = IMAGE_PREVIEW_HEIGHT + 1;
 
 interface MessageListProps {
@@ -19,23 +21,41 @@ interface MessageListProps {
 
 function getMessageRowCost(
   msg: ChatMessage,
+  selfId: number,
+  termWidth: number,
   imageMode: ImageMode,
   canRenderInlineImages: boolean
 ) {
-  if (imageMode !== "inline" || !canRenderInlineImages) return 1;
-  return getFirstImageSource(msg) ? INLINE_IMAGE_ROW_COST : 1;
+  const isMine = msg.senderId === selfId || msg.isMine;
+  const textWidth = Math.max(termWidth - (isMine ? 6 : 8), 16);
+  const lineCount = wrapCells(
+    compactMessage(msg, { imageMode }) || "(empty)",
+    textWidth,
+    MAX_BODY_LINES
+  ).length;
+  const textRows = isMine ? lineCount + 1 : lineCount + 2;
+  if (imageMode !== "inline" || !canRenderInlineImages) return textRows;
+  return getFirstImageSource(msg) ? textRows + INLINE_IMAGE_ROW_COST : textRows;
 }
 
 export function moveMessageScrollOffset(
   messages: ChatMessage[],
   bodyRows: number,
+  selfId: number,
+  termWidth: number,
   imageMode: ImageMode,
   currentOffset: number,
   direction: "older" | "newer"
 ) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
   const targetRows = Math.max(Math.floor(bodyRows / 2), 1);
-  const maxOffset = getMaxMessageScrollOffset(messages, bodyRows, imageMode);
+  const maxOffset = getMaxMessageScrollOffset(
+    messages,
+    bodyRows,
+    selfId,
+    termWidth,
+    imageMode
+  );
   let nextOffset = currentOffset;
   let movedRows = 0;
 
@@ -47,6 +67,8 @@ export function moveMessageScrollOffset(
     ) {
       movedRows += getMessageRowCost(
         messages[i],
+        selfId,
+        termWidth,
         imageMode,
         canRenderInlineImages
       );
@@ -60,6 +82,8 @@ export function moveMessageScrollOffset(
     ) {
       movedRows += getMessageRowCost(
         messages[i],
+        selfId,
+        termWidth,
         imageMode,
         canRenderInlineImages
       );
@@ -77,6 +101,8 @@ function clampOffset(value: number, max: number) {
 export function getMaxMessageScrollOffset(
   messages: ChatMessage[],
   bodyRows: number,
+  selfId: number,
+  termWidth: number,
   imageMode: ImageMode
 ) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
@@ -84,7 +110,13 @@ export function getMaxMessageScrollOffset(
   let firstViewportEnd = 0;
 
   for (const msg of messages) {
-    const rowCost = getMessageRowCost(msg, imageMode, canRenderInlineImages);
+    const rowCost = getMessageRowCost(
+      msg,
+      selfId,
+      termWidth,
+      imageMode,
+      canRenderInlineImages
+    );
     if (firstViewportEnd > 0 && usedRows + rowCost > bodyRows) break;
     firstViewportEnd += 1;
     if (rowCost > bodyRows) break;
@@ -97,6 +129,8 @@ export function getMaxMessageScrollOffset(
 function getVisibleMessages(
   messages: ChatMessage[],
   bodyRows: number,
+  selfId: number,
+  termWidth: number,
   imageMode: ImageMode,
   canRenderInlineImages: boolean,
   scrollOffset: number
@@ -107,7 +141,13 @@ function getVisibleMessages(
 
   for (let i = end - 1; i >= 0; i--) {
     const msg = messages[i];
-    const rowCost = getMessageRowCost(msg, imageMode, canRenderInlineImages);
+    const rowCost = getMessageRowCost(
+      msg,
+      selfId,
+      termWidth,
+      imageMode,
+      canRenderInlineImages
+    );
     if (selected.length > 0 && usedRows + rowCost > bodyRows) break;
     if (selected.length === 0 && rowCost > bodyRows) {
       selected.push(msg);
@@ -122,7 +162,13 @@ function getVisibleMessages(
   // At the start of history, fill otherwise-empty rows with newer messages.
   for (let i = end; i < messages.length; i++) {
     const msg = messages[i];
-    const rowCost = getMessageRowCost(msg, imageMode, canRenderInlineImages);
+    const rowCost = getMessageRowCost(
+      msg,
+      selfId,
+      termWidth,
+      imageMode,
+      canRenderInlineImages
+    );
     if (usedRows + rowCost > bodyRows) break;
     selected.push(msg);
     usedRows += rowCost;
@@ -144,6 +190,8 @@ export function MessageList({
   const visibleMsgs = getVisibleMessages(
     messages,
     bodyRows,
+    selfId,
+    termWidth,
     imageMode,
     canRenderInlineImages,
     scrollOffset
