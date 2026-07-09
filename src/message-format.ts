@@ -89,11 +89,48 @@ function resourceTag(
   return `[${type},${key}="${quoteTagValue(value)}"]`;
 }
 
-function shareTag(data: Record<string, string>) {
-  const attrs = ["title", "url"]
+function shareTag(data: Record<string, string>, terminalLinks = false) {
+  if (terminalLinks && data.url && isWebUrl(data.url)) {
+    return terminalLink(
+      data.title ? `[share] ${data.title}` : "[share]",
+      data.url,
+      true
+    );
+  }
+
+  const attrs = (data.title ? ["title"] : ["url"])
     .filter((key) => data[key])
     .map((key) => `${key}="${quoteTagValue(data[key])}"`);
   return attrs.length ? `[share,${attrs.join(",")}]` : "[share]";
+}
+
+function compactNewsJson(data: Record<string, string>, terminalLinks = false) {
+  if (!data.data) return "[json]";
+
+  try {
+    const payload = JSON.parse(data.data) as unknown;
+    if (!payload || typeof payload !== "object") return "[json]";
+
+    const meta = (payload as { meta?: unknown }).meta;
+    if (!meta || typeof meta !== "object") return "[json]";
+
+    const news = (meta as { news?: unknown }).news;
+    if (!news || typeof news !== "object") return "[json]";
+
+    const { title, jumpUrl } = news as {
+      title?: unknown;
+      jumpUrl?: unknown;
+    };
+    const shareData = {
+      ...(typeof title === "string" ? { title } : {}),
+      ...(typeof jumpUrl === "string" ? { url: jumpUrl } : {}),
+    };
+    return shareData.title || shareData.url
+      ? shareTag(shareData, terminalLinks)
+      : "[json]";
+  } catch {
+    return "[json]";
+  }
 }
 
 function compactSegment(
@@ -107,6 +144,7 @@ function compactSegment(
   if (
     terminalLinks &&
     type !== "text" &&
+    type !== "share" &&
     resourceUrl &&
     isWebUrl(resourceUrl)
   ) {
@@ -126,7 +164,9 @@ function compactSegment(
     case "url":
       return resourceTag("url", data, ["url", "href", "text"]);
     case "share":
-      return shareTag(data);
+      return shareTag(data, terminalLinks);
+    case "json":
+      return compactNewsJson(data, terminalLinks);
     case "reply":
       return "[reply]";
     case "at":
