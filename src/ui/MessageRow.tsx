@@ -122,11 +122,13 @@ export function MessageRow({
         </Text>
         <Text dimColor> · {time}</Text>
       </Box>
-      {renderLines.map((line, lineIndex) => (
-        <Text key={lineIndex} color="white" wrap="truncate-end">
-          {line}
-        </Text>
-      ))}
+      <Box flexDirection="column" paddingLeft={2} overflow="hidden">
+        {renderLines.map((line, lineIndex) => (
+          <Text key={lineIndex} color="white" wrap="truncate-end">
+            {line}
+          </Text>
+        ))}
+      </Box>
       {imageSource && (
         <Box paddingLeft={2} height={10} overflow="hidden">
           <ImagePreview source={imageSource} />
