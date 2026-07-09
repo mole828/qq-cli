@@ -9,6 +9,13 @@ import { MessageRow } from "./MessageRow.js";
 const MAX_BODY_LINES = 3;
 const INLINE_IMAGE_ROW_COST = IMAGE_PREVIEW_HEIGHT;
 
+interface VisibleMessage {
+  msg: ChatMessage;
+  cropTop: number;
+  visibleRows: number;
+  clipped: boolean;
+}
+
 interface MessageListProps {
   messages: ChatMessage[];
   selfId: number;
@@ -40,6 +47,24 @@ function getMessageRowCost(
   return getFirstImageSource(msg) ? textRows + INLINE_IMAGE_ROW_COST : textRows;
 }
 
+export function getMessageScrollRows(
+  msg: ChatMessage,
+  bodyRows: number,
+  selfId: number,
+  termWidth: number,
+  imageMode: ImageMode,
+  messageGap: number
+) {
+  return getMessageRowCost(
+    msg,
+    selfId,
+    termWidth,
+    imageMode,
+    bodyRows >= INLINE_IMAGE_ROW_COST,
+    messageGap
+  );
+}
+
 export function moveMessageScrollOffset(
   messages: ChatMessage[],
   bodyRows: number,
@@ -50,7 +75,6 @@ export function moveMessageScrollOffset(
   currentOffset: number,
   direction: "older" | "newer"
 ) {
-  const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
   const targetRows = Math.max(Math.floor(bodyRows / 2), 1);
   const maxOffset = getMaxMessageScrollOffset(
     messages,
@@ -60,44 +84,8 @@ export function moveMessageScrollOffset(
     imageMode,
     messageGap
   );
-  let nextOffset = currentOffset;
-  let movedRows = 0;
-
-  if (direction === "older") {
-    for (
-      let i = messages.length - currentOffset - 1;
-      i >= 0 && nextOffset < maxOffset && movedRows < targetRows;
-      i--
-    ) {
-      movedRows += getMessageRowCost(
-        messages[i],
-        selfId,
-        termWidth,
-        imageMode,
-        canRenderInlineImages,
-        messageGap
-      );
-      nextOffset += 1;
-    }
-  } else {
-    for (
-      let i = messages.length - currentOffset;
-      i < messages.length && nextOffset > 0 && movedRows < targetRows;
-      i++
-    ) {
-      movedRows += getMessageRowCost(
-        messages[i],
-        selfId,
-        termWidth,
-        imageMode,
-        canRenderInlineImages,
-        messageGap
-      );
-      nextOffset -= 1;
-    }
-  }
-
-  return clampOffset(nextOffset, maxOffset);
+  const delta = direction === "older" ? targetRows : -targetRows;
+  return clampOffset(currentOffset + delta, maxOffset);
 }
 
 function clampOffset(value: number, max: number) {
@@ -113,25 +101,21 @@ export function getMaxMessageScrollOffset(
   messageGap: number
 ) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
-  let usedRows = 0;
-  let firstViewportEnd = 0;
+  const totalRows = messages.reduce(
+    (sum, msg) =>
+      sum +
+      getMessageRowCost(
+        msg,
+        selfId,
+        termWidth,
+        imageMode,
+        canRenderInlineImages,
+        messageGap
+      ),
+    0
+  );
 
-  for (const msg of messages) {
-    const rowCost = getMessageRowCost(
-      msg,
-      selfId,
-      termWidth,
-      imageMode,
-      canRenderInlineImages,
-      messageGap
-    );
-    if (firstViewportEnd > 0 && usedRows + rowCost > bodyRows) break;
-    firstViewportEnd += 1;
-    if (rowCost > bodyRows) break;
-    usedRows += rowCost;
-  }
-
-  return Math.max(messages.length - firstViewportEnd, 0);
+  return Math.max(totalRows - bodyRows, 0);
 }
 
 function getVisibleMessages(
@@ -144,45 +128,39 @@ function getVisibleMessages(
   messageGap: number,
   scrollOffset: number
 ) {
-  const selected: ChatMessage[] = [];
-  let usedRows = 0;
-  const end = Math.max(messages.length - scrollOffset, 1);
-
-  for (let i = end - 1; i >= 0; i--) {
-    const msg = messages[i];
-    const rowCost = getMessageRowCost(
+  const rowCosts = messages.map((msg) =>
+    getMessageRowCost(
       msg,
       selfId,
       termWidth,
       imageMode,
       canRenderInlineImages,
       messageGap
-    );
-    if (selected.length > 0 && usedRows + rowCost > bodyRows) break;
-    if (selected.length === 0 && rowCost > bodyRows) {
-      selected.push(msg);
-      break;
-    }
-    selected.push(msg);
-    usedRows += rowCost;
-  }
+    )
+  );
+  const totalRows = rowCosts.reduce((sum, rows) => sum + rows, 0);
+  const viewportStart = clampOffset(totalRows - bodyRows - scrollOffset, totalRows);
+  const viewportEnd = Math.min(viewportStart + bodyRows, totalRows);
+  const selected: VisibleMessage[] = [];
+  let rowCursor = 0;
 
-  selected.reverse();
+  for (let i = 0; i < messages.length; i++) {
+    const rowCost = rowCosts[i];
+    const rowStart = rowCursor;
+    const rowEnd = rowStart + rowCost;
+    rowCursor = rowEnd;
 
-  // At the start of history, fill otherwise-empty rows with newer messages.
-  for (let i = end; i < messages.length; i++) {
-    const msg = messages[i];
-    const rowCost = getMessageRowCost(
-      msg,
-      selfId,
-      termWidth,
-      imageMode,
-      canRenderInlineImages,
-      messageGap
-    );
-    if (usedRows + rowCost > bodyRows) break;
-    selected.push(msg);
-    usedRows += rowCost;
+    if (rowEnd <= viewportStart) continue;
+    if (rowStart >= viewportEnd) break;
+
+    const visibleStart = Math.max(rowStart, viewportStart);
+    const visibleEnd = Math.min(rowEnd, viewportEnd);
+    selected.push({
+      msg: messages[i],
+      cropTop: visibleStart - rowStart,
+      visibleRows: visibleEnd - visibleStart,
+      clipped: visibleStart > rowStart || visibleEnd < rowEnd,
+    });
   }
 
   return selected;
@@ -212,7 +190,7 @@ export function MessageList({
 
   return (
     <>
-      {visibleMsgs.map((msg, i) => (
+      {visibleMsgs.map(({ msg, cropTop, visibleRows, clipped }, i) => (
         <MessageRow
           key={`${msg.id}-${i}`}
           msg={msg}
@@ -223,6 +201,9 @@ export function MessageList({
           imageMode={imageMode}
           renderInlineImage={canRenderInlineImages}
           messageGap={messageGap}
+          cropTop={cropTop}
+          visibleRows={visibleRows}
+          clipped={clipped}
         />
       ))}
     </>

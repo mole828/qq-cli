@@ -24,6 +24,9 @@ interface MessageRowProps {
   imageMode: ImageMode;
   renderInlineImage: boolean;
   messageGap: number;
+  cropTop?: number;
+  visibleRows?: number;
+  clipped?: boolean;
 }
 
 export function MessageRow({
@@ -34,6 +37,9 @@ export function MessageRow({
   imageMode,
   renderInlineImage,
   messageGap,
+  cropTop = 0,
+  visibleRows,
+  clipped = false,
 }: MessageRowProps) {
   const isMine = msg.senderId === selfId;
   const time = formatTime(msg.timestamp);
@@ -57,7 +63,7 @@ export function MessageRow({
       ? [linkedContent]
       : contentLines.map((line) => linkifyUrls(line));
 
-    return (
+    const row = (
       <Box
         key={`${msg.id}-${index}`}
         flexDirection="column"
@@ -86,11 +92,13 @@ export function MessageRow({
         </Box>
         {imageSource && (
           <Box paddingLeft={4} height={10} overflow="hidden">
-            <ImagePreview source={imageSource} />
+            <ImagePreview source={imageSource} clipped={clipped} />
           </Box>
         )}
       </Box>
     );
+
+    return clipRow(row, cropTop, visibleRows);
   }
 
   const senderWidth = Math.max(Math.min(Math.floor(termWidth * 0.32), 28), 10);
@@ -105,7 +113,7 @@ export function MessageRow({
     ? [linkedContent]
     : contentLines.map((line) => linkifyUrls(line));
 
-  return (
+  const row = (
     <Box
       key={`${msg.id}-${index}`}
       flexDirection="column"
@@ -131,9 +139,27 @@ export function MessageRow({
       </Box>
       {imageSource && (
         <Box paddingLeft={2} height={10} overflow="hidden">
-          <ImagePreview source={imageSource} />
+          <ImagePreview source={imageSource} clipped={clipped} />
         </Box>
       )}
+    </Box>
+  );
+
+  return clipRow(row, cropTop, visibleRows);
+}
+
+function clipRow(
+  row: React.ReactElement,
+  cropTop: number,
+  visibleRows: number | undefined
+) {
+  if (cropTop <= 0 && visibleRows === undefined) return row;
+
+  return (
+    <Box height={Math.max(visibleRows ?? 1, 1)} overflow="hidden">
+      <Box flexDirection="column" marginTop={-Math.max(cropTop, 0)}>
+        {row}
+      </Box>
     </Box>
   );
 }

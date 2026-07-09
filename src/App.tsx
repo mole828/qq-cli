@@ -22,6 +22,7 @@ import { COMPOSER_ROWS, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
 import { SessionPicker } from "./ui/SessionPicker.js";
 import {
   getMaxMessageScrollOffset,
+  getMessageScrollRows,
   MessageList,
   moveMessageScrollOffset,
 } from "./ui/MessageList.js";
@@ -93,6 +94,13 @@ export function App() {
   const [helpMode, setHelpMode] = useState(false);
   const [imageMode, setImageMode] = useState(() => getInitialImageMode());
   const [messageGap] = useState(() => getInitialMessageGap());
+  const messageViewportRef = useRef({
+    bodyRows,
+    imageMode,
+    messageGap,
+    selfId,
+    termWidth,
+  });
 
   // ---- scrollable picker modal ----
   const [modalMode, setModalMode] = useState(false);
@@ -107,6 +115,16 @@ export function App() {
   useEffect(() => {
     messageScrollOffsetRef.current = messageScrollOffset;
   }, [messageScrollOffset]);
+
+  useEffect(() => {
+    messageViewportRef.current = {
+      bodyRows,
+      imageMode,
+      messageGap,
+      selfId,
+      termWidth,
+    };
+  }, [bodyRows, imageMode, messageGap, selfId, termWidth]);
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -139,7 +157,19 @@ export function App() {
       const current = activeSessionRef.current;
       if (current && belongsToSession(msg, current)) {
         if (messageScrollOffsetRef.current > 0) {
-          setMessageScrollOffset((offset) => offset + 1);
+          const viewport = messageViewportRef.current;
+          setMessageScrollOffset(
+            (offset) =>
+              offset +
+              getMessageScrollRows(
+                msg,
+                viewport.bodyRows,
+                viewport.selfId,
+                viewport.termWidth,
+                viewport.imageMode,
+                viewport.messageGap
+              )
+          );
         }
         return;
       }
