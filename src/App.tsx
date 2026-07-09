@@ -10,7 +10,11 @@ import {
   removeAttachment,
   type ImageAttachment,
 } from "./clipboard-image.js";
-import { getInitialImageMode, parseImageMode } from "./config.js";
+import {
+  getInitialImageMode,
+  getInitialMessageGap,
+  parseImageMode,
+} from "./config.js";
 import { Composer } from "./ui/Composer.js";
 import { EmptyState } from "./ui/EmptyState.js";
 import { HelpPanel } from "./ui/HelpPanel.js";
@@ -88,6 +92,7 @@ export function App() {
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [helpMode, setHelpMode] = useState(false);
   const [imageMode, setImageMode] = useState(() => getInitialImageMode());
+  const [messageGap] = useState(() => getInitialMessageGap());
 
   // ---- scrollable picker modal ----
   const [modalMode, setModalMode] = useState(false);
@@ -435,7 +440,8 @@ export function App() {
         bodyRows,
         selfId,
         termWidth,
-        imageMode
+        imageMode,
+        messageGap
       );
       setMessageScrollOffset((offset) => Math.min(offset + 1, maxOffset));
       return;
@@ -452,6 +458,7 @@ export function App() {
           selfId,
           termWidth,
           imageMode,
+          messageGap,
           offset,
           "older"
         )
@@ -466,6 +473,7 @@ export function App() {
           selfId,
           termWidth,
           imageMode,
+          messageGap,
           offset,
           "newer"
         )
@@ -705,7 +713,8 @@ export function App() {
     bodyRows,
     selfId,
     termWidth,
-    imageMode
+    imageMode,
+    messageGap
   );
   const effectiveMessageScrollOffset = Math.min(
     messageScrollOffset,
@@ -749,6 +758,7 @@ export function App() {
             bodyRows={bodyRows}
             imageMode={imageMode}
             scrollOffset={effectiveMessageScrollOffset}
+            messageGap={messageGap}
           />
         ) : null}
       </Box>

@@ -23,6 +23,7 @@ interface MessageRowProps {
   termWidth: number;
   imageMode: ImageMode;
   renderInlineImage: boolean;
+  messageGap: number;
 }
 
 export function MessageRow({
@@ -32,6 +33,7 @@ export function MessageRow({
   termWidth,
   imageMode,
   renderInlineImage,
+  messageGap,
 }: MessageRowProps) {
   const isMine = msg.senderId === selfId;
   const time = formatTime(msg.timestamp);
@@ -60,7 +62,7 @@ export function MessageRow({
         key={`${msg.id}-${index}`}
         flexDirection="column"
         overflow="hidden"
-        marginBottom={1}
+        marginBottom={messageGap}
       >
         <Box
           flexDirection="column"
@@ -92,6 +94,7 @@ export function MessageRow({
   }
 
   const senderWidth = Math.max(Math.min(Math.floor(termWidth * 0.32), 28), 10);
+  const senderLabel = truncateCells(sender, senderWidth);
   const bodyWidth = Math.max(termWidth - 8, 16);
   const contentLines = wrapCells(
     rawContent || "(empty)",
@@ -108,18 +111,16 @@ export function MessageRow({
       flexDirection="column"
       overflow="hidden"
       paddingX={2}
-      marginBottom={1}
+      marginBottom={messageGap}
     >
       <Box flexDirection="row" height={1} overflow="hidden">
         <Box width={2} flexShrink={0}>
           <Text dimColor>•</Text>
         </Box>
-        <Box width={senderWidth + 1} flexShrink={0}>
-          <Text color="white" bold wrap="truncate-end">
-            {truncateCells(sender, senderWidth)}
-          </Text>
-        </Box>
-        <Text dimColor>· {time}</Text>
+        <Text color="white" bold wrap="truncate-end">
+          {senderLabel}
+        </Text>
+        <Text dimColor> · {time}</Text>
       </Box>
       {renderLines.map((line, lineIndex) => (
         <Text key={lineIndex} color="white" wrap="truncate-end">

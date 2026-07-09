@@ -7,7 +7,7 @@ import { IMAGE_PREVIEW_HEIGHT } from "./ImagePreview.js";
 import { MessageRow } from "./MessageRow.js";
 
 const MAX_BODY_LINES = 3;
-const INLINE_IMAGE_ROW_COST = IMAGE_PREVIEW_HEIGHT + 1;
+const INLINE_IMAGE_ROW_COST = IMAGE_PREVIEW_HEIGHT;
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -17,6 +17,7 @@ interface MessageListProps {
   bodyRows: number;
   imageMode: ImageMode;
   scrollOffset: number;
+  messageGap: number;
 }
 
 function getMessageRowCost(
@@ -24,7 +25,8 @@ function getMessageRowCost(
   selfId: number,
   termWidth: number,
   imageMode: ImageMode,
-  canRenderInlineImages: boolean
+  canRenderInlineImages: boolean,
+  messageGap: number
 ) {
   const isMine = msg.senderId === selfId || msg.isMine;
   const textWidth = Math.max(termWidth - (isMine ? 6 : 8), 16);
@@ -33,7 +35,7 @@ function getMessageRowCost(
     textWidth,
     MAX_BODY_LINES
   ).length;
-  const textRows = isMine ? lineCount + 1 : lineCount + 2;
+  const textRows = (isMine ? lineCount : lineCount + 1) + messageGap;
   if (imageMode !== "inline" || !canRenderInlineImages) return textRows;
   return getFirstImageSource(msg) ? textRows + INLINE_IMAGE_ROW_COST : textRows;
 }
@@ -44,6 +46,7 @@ export function moveMessageScrollOffset(
   selfId: number,
   termWidth: number,
   imageMode: ImageMode,
+  messageGap: number,
   currentOffset: number,
   direction: "older" | "newer"
 ) {
@@ -54,7 +57,8 @@ export function moveMessageScrollOffset(
     bodyRows,
     selfId,
     termWidth,
-    imageMode
+    imageMode,
+    messageGap
   );
   let nextOffset = currentOffset;
   let movedRows = 0;
@@ -70,7 +74,8 @@ export function moveMessageScrollOffset(
         selfId,
         termWidth,
         imageMode,
-        canRenderInlineImages
+        canRenderInlineImages,
+        messageGap
       );
       nextOffset += 1;
     }
@@ -85,7 +90,8 @@ export function moveMessageScrollOffset(
         selfId,
         termWidth,
         imageMode,
-        canRenderInlineImages
+        canRenderInlineImages,
+        messageGap
       );
       nextOffset -= 1;
     }
@@ -103,7 +109,8 @@ export function getMaxMessageScrollOffset(
   bodyRows: number,
   selfId: number,
   termWidth: number,
-  imageMode: ImageMode
+  imageMode: ImageMode,
+  messageGap: number
 ) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
   let usedRows = 0;
@@ -115,7 +122,8 @@ export function getMaxMessageScrollOffset(
       selfId,
       termWidth,
       imageMode,
-      canRenderInlineImages
+      canRenderInlineImages,
+      messageGap
     );
     if (firstViewportEnd > 0 && usedRows + rowCost > bodyRows) break;
     firstViewportEnd += 1;
@@ -133,6 +141,7 @@ function getVisibleMessages(
   termWidth: number,
   imageMode: ImageMode,
   canRenderInlineImages: boolean,
+  messageGap: number,
   scrollOffset: number
 ) {
   const selected: ChatMessage[] = [];
@@ -146,7 +155,8 @@ function getVisibleMessages(
       selfId,
       termWidth,
       imageMode,
-      canRenderInlineImages
+      canRenderInlineImages,
+      messageGap
     );
     if (selected.length > 0 && usedRows + rowCost > bodyRows) break;
     if (selected.length === 0 && rowCost > bodyRows) {
@@ -167,7 +177,8 @@ function getVisibleMessages(
       selfId,
       termWidth,
       imageMode,
-      canRenderInlineImages
+      canRenderInlineImages,
+      messageGap
     );
     if (usedRows + rowCost > bodyRows) break;
     selected.push(msg);
@@ -184,6 +195,7 @@ export function MessageList({
   termWidth,
   bodyRows,
   imageMode,
+  messageGap,
   scrollOffset,
 }: MessageListProps) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
@@ -194,6 +206,7 @@ export function MessageList({
     termWidth,
     imageMode,
     canRenderInlineImages,
+    messageGap,
     scrollOffset
   );
 
@@ -209,6 +222,7 @@ export function MessageList({
           termWidth={termWidth}
           imageMode={imageMode}
           renderInlineImage={canRenderInlineImages}
+          messageGap={messageGap}
         />
       ))}
     </>

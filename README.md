@@ -84,6 +84,8 @@ QQ_CLI_IMAGE_MODE=inline npm run dev
 
 `off` 显示可点击的 `[image]`，`inline` 会在支持的终端中显示缩略图。也可以用 `Shift+Tab` 在两种模式间切换；`off` 时状态栏不显示图片模式。
 
+消息之间默认不留空行。需要恢复更松散的间距时，可以设置 `QQ_CLI_MESSAGE_GAP=1`。
+
 ## 使用 NapCat
 
 仓库里提供了一个基础的 `napcat-docker-compose.yaml`：
