@@ -160,7 +160,7 @@ function compactSegment(
     case "record":
       return "[voice]";
     case "video":
-      return resourceTag("video", data);
+      return "[video]";
     case "url":
       return resourceTag("url", data, ["url", "href", "text"]);
     case "share":
