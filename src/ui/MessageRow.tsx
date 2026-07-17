@@ -4,7 +4,7 @@ import type { ChatMessage, Contact } from "../types.js";
 import type { ImageMode } from "../config.js";
 import { compactMessage, getFirstImageSource } from "../message-format.js";
 import { linkifyUrls, truncateCells, wrapCells } from "../terminal-text.js";
-import { ImagePreview } from "./ImagePreview.js";
+import { IMAGE_PREVIEW_HEIGHT, ImagePreview } from "./ImagePreview.js";
 
 const MAX_BODY_LINES = 3;
 
@@ -91,7 +91,7 @@ export function MessageRow({
           ))}
         </Box>
         {imageSource && (
-          <Box paddingLeft={4} height={10} overflow="hidden">
+          <Box paddingLeft={4} height={IMAGE_PREVIEW_HEIGHT} overflow="hidden">
             <ImagePreview source={imageSource} clipped={clipped} />
           </Box>
         )}
@@ -138,7 +138,7 @@ export function MessageRow({
         ))}
       </Box>
       {imageSource && (
-        <Box paddingLeft={2} height={10} overflow="hidden">
+        <Box paddingLeft={2} height={IMAGE_PREVIEW_HEIGHT} overflow="hidden">
           <ImagePreview source={imageSource} clipped={clipped} />
         </Box>
       )}
