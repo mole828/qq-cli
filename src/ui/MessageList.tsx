@@ -3,7 +3,10 @@ import type { ChatMessage, Contact } from "../types.js";
 import type { ImageMode } from "../config.js";
 import { compactMessage, getFirstImageSource } from "../message-format.js";
 import { wrapCells } from "../terminal-text.js";
-import { IMAGE_PREVIEW_HEIGHT } from "./ImagePreview.js";
+import {
+  getImagePreviewHeight,
+  IMAGE_PREVIEW_HEIGHT,
+} from "./ImagePreview.js";
 import { MessageRow } from "./MessageRow.js";
 
 const MAX_BODY_LINES = 3;
@@ -21,6 +24,8 @@ interface MessageListProps {
   selfId: number;
   activeSession: Contact | null;
   termWidth: number;
+  cellWidth: number;
+  cellHeight: number;
   bodyRows: number;
   imageMode: ImageMode;
   scrollOffset: number;
@@ -31,6 +36,8 @@ function getMessageRowCost(
   msg: ChatMessage,
   selfId: number,
   termWidth: number,
+  cellWidth: number,
+  cellHeight: number,
   imageMode: ImageMode,
   canRenderInlineImages: boolean,
   messageGap: number
@@ -44,7 +51,10 @@ function getMessageRowCost(
   ).length;
   const textRows = (isMine ? lineCount : lineCount + 1) + messageGap;
   if (imageMode !== "inline" || !canRenderInlineImages) return textRows;
-  return getFirstImageSource(msg) ? textRows + INLINE_IMAGE_ROW_COST : textRows;
+  const imageSource = getFirstImageSource(msg);
+  return imageSource
+    ? textRows + getImagePreviewHeight(imageSource, cellWidth, cellHeight)
+    : textRows;
 }
 
 export function getMessageScrollRows(
@@ -52,6 +62,8 @@ export function getMessageScrollRows(
   bodyRows: number,
   selfId: number,
   termWidth: number,
+  cellWidth: number,
+  cellHeight: number,
   imageMode: ImageMode,
   messageGap: number
 ) {
@@ -59,6 +71,8 @@ export function getMessageScrollRows(
     msg,
     selfId,
     termWidth,
+    cellWidth,
+    cellHeight,
     imageMode,
     bodyRows >= INLINE_IMAGE_ROW_COST,
     messageGap
@@ -70,6 +84,8 @@ export function moveMessageScrollOffset(
   bodyRows: number,
   selfId: number,
   termWidth: number,
+  cellWidth: number,
+  cellHeight: number,
   imageMode: ImageMode,
   messageGap: number,
   currentOffset: number,
@@ -81,6 +97,8 @@ export function moveMessageScrollOffset(
     bodyRows,
     selfId,
     termWidth,
+    cellWidth,
+    cellHeight,
     imageMode,
     messageGap
   );
@@ -97,6 +115,8 @@ export function getMaxMessageScrollOffset(
   bodyRows: number,
   selfId: number,
   termWidth: number,
+  cellWidth: number,
+  cellHeight: number,
   imageMode: ImageMode,
   messageGap: number
 ) {
@@ -108,6 +128,8 @@ export function getMaxMessageScrollOffset(
         msg,
         selfId,
         termWidth,
+        cellWidth,
+        cellHeight,
         imageMode,
         canRenderInlineImages,
         messageGap
@@ -123,6 +145,8 @@ function getVisibleMessages(
   bodyRows: number,
   selfId: number,
   termWidth: number,
+  cellWidth: number,
+  cellHeight: number,
   imageMode: ImageMode,
   canRenderInlineImages: boolean,
   messageGap: number,
@@ -133,6 +157,8 @@ function getVisibleMessages(
       msg,
       selfId,
       termWidth,
+      cellWidth,
+      cellHeight,
       imageMode,
       canRenderInlineImages,
       messageGap
@@ -171,6 +197,8 @@ export function MessageList({
   selfId,
   activeSession,
   termWidth,
+  cellWidth,
+  cellHeight,
   bodyRows,
   imageMode,
   messageGap,
@@ -182,6 +210,8 @@ export function MessageList({
     bodyRows,
     selfId,
     termWidth,
+    cellWidth,
+    cellHeight,
     imageMode,
     canRenderInlineImages,
     messageGap,
@@ -198,6 +228,15 @@ export function MessageList({
           selfId={selfId}
           activeSession={activeSession}
           termWidth={termWidth}
+          imagePreviewHeight={
+            getFirstImageSource(msg)
+              ? getImagePreviewHeight(
+                  getFirstImageSource(msg)!,
+                  cellWidth,
+                  cellHeight
+                )
+              : IMAGE_PREVIEW_HEIGHT
+          }
           imageMode={imageMode}
           renderInlineImage={canRenderInlineImages}
           messageGap={messageGap}

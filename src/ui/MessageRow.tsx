@@ -4,7 +4,7 @@ import type { ChatMessage, Contact } from "../types.js";
 import type { ImageMode } from "../config.js";
 import { compactMessage, getFirstImageSource } from "../message-format.js";
 import { linkifyUrls, truncateCells, wrapCells } from "../terminal-text.js";
-import { IMAGE_PREVIEW_HEIGHT, ImagePreview } from "./ImagePreview.js";
+import { ImagePreview } from "./ImagePreview.js";
 
 const MAX_BODY_LINES = 3;
 
@@ -21,6 +21,7 @@ interface MessageRowProps {
   selfId: number;
   activeSession: Contact | null;
   termWidth: number;
+  imagePreviewHeight: number;
   imageMode: ImageMode;
   renderInlineImage: boolean;
   messageGap: number;
@@ -34,6 +35,7 @@ export function MessageRow({
   index,
   selfId,
   termWidth,
+  imagePreviewHeight,
   imageMode,
   renderInlineImage,
   messageGap,
@@ -91,8 +93,12 @@ export function MessageRow({
           ))}
         </Box>
         {imageSource && (
-          <Box paddingLeft={4} height={IMAGE_PREVIEW_HEIGHT} overflow="hidden">
-            <ImagePreview source={imageSource} clipped={clipped} />
+          <Box paddingLeft={4} height={imagePreviewHeight} overflow="hidden">
+            <ImagePreview
+              source={imageSource}
+              height={imagePreviewHeight}
+              clipped={clipped}
+            />
           </Box>
         )}
       </Box>
@@ -138,8 +144,12 @@ export function MessageRow({
         ))}
       </Box>
       {imageSource && (
-        <Box paddingLeft={2} height={IMAGE_PREVIEW_HEIGHT} overflow="hidden">
-          <ImagePreview source={imageSource} clipped={clipped} />
+        <Box paddingLeft={2} height={imagePreviewHeight} overflow="hidden">
+          <ImagePreview
+            source={imageSource}
+            height={imagePreviewHeight}
+            clipped={clipped}
+          />
         </Box>
       )}
     </Box>

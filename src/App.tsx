@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { Box, useInput, useWindowSize, useApp } from "ink";
+import { useTerminalInfo } from "ink-picture";
 import type { Contact, ChatMessage, MessageSegment } from "./types.js";
 import { QQClient } from "./qq-client.js";
 import {
@@ -26,6 +27,7 @@ import {
   MessageList,
   moveMessageScrollOffset,
 } from "./ui/MessageList.js";
+import { useImageMetadataVersion } from "./ui/ImagePreview.js";
 
 function clamp(v: number, lo: number, hi: number) {
   return v < lo ? lo : v > hi ? hi : v;
@@ -61,6 +63,8 @@ const COMPLETABLE_COMMANDS = [
 export function App() {
   const { columns, rows } = useWindowSize();
   const { exit } = useApp();
+  const terminalInfo = useTerminalInfo();
+  useImageMetadataVersion();
   const termWidth = columns || 80;
   const termHeight = rows || 24;
   // Ink clears the terminal when an interactive frame reaches the full viewport
@@ -100,6 +104,8 @@ export function App() {
     messageGap,
     selfId,
     termWidth,
+    cellWidth: terminalInfo.cellWidth,
+    cellHeight: terminalInfo.cellHeight,
   });
 
   // ---- scrollable picker modal ----
@@ -123,8 +129,18 @@ export function App() {
       messageGap,
       selfId,
       termWidth,
+      cellWidth: terminalInfo.cellWidth,
+      cellHeight: terminalInfo.cellHeight,
     };
-  }, [bodyRows, imageMode, messageGap, selfId, termWidth]);
+  }, [
+    bodyRows,
+    imageMode,
+    messageGap,
+    selfId,
+    termWidth,
+    terminalInfo.cellWidth,
+    terminalInfo.cellHeight,
+  ]);
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -166,6 +182,8 @@ export function App() {
                 viewport.bodyRows,
                 viewport.selfId,
                 viewport.termWidth,
+                viewport.cellWidth,
+                viewport.cellHeight,
                 viewport.imageMode,
                 viewport.messageGap
               )
@@ -470,6 +488,8 @@ export function App() {
         bodyRows,
         selfId,
         termWidth,
+        terminalInfo.cellWidth,
+        terminalInfo.cellHeight,
         imageMode,
         messageGap
       );
@@ -487,6 +507,8 @@ export function App() {
           bodyRows,
           selfId,
           termWidth,
+          terminalInfo.cellWidth,
+          terminalInfo.cellHeight,
           imageMode,
           messageGap,
           offset,
@@ -502,6 +524,8 @@ export function App() {
           bodyRows,
           selfId,
           termWidth,
+          terminalInfo.cellWidth,
+          terminalInfo.cellHeight,
           imageMode,
           messageGap,
           offset,
@@ -743,6 +767,8 @@ export function App() {
     bodyRows,
     selfId,
     termWidth,
+    terminalInfo.cellWidth,
+    terminalInfo.cellHeight,
     imageMode,
     messageGap
   );
@@ -785,6 +811,8 @@ export function App() {
             selfId={selfId}
             activeSession={activeSession}
             termWidth={termWidth}
+            cellWidth={terminalInfo.cellWidth}
+            cellHeight={terminalInfo.cellHeight}
             bodyRows={bodyRows}
             imageMode={imageMode}
             scrollOffset={effectiveMessageScrollOffset}

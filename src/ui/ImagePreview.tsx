@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useSyncExternalStore } from "react";
 import { Box, Text } from "ink";
 import Image, { useTerminalInfo } from "ink-picture";
 import { Jimp } from "jimp";
@@ -24,6 +24,28 @@ interface PreparedImage {
 }
 
 const imageMetadataCache = new Map<string, Promise<PreparedImage | null>>();
+const preparedImageCache = new Map<string, PreparedImage | null>();
+const metadataListeners = new Set<() => void>();
+let metadataVersion = 0;
+
+function publishPreparedImage(source: string, image: PreparedImage | null) {
+  preparedImageCache.set(source, image);
+  metadataVersion += 1;
+  for (const listener of metadataListeners) listener();
+}
+
+function subscribeToImageMetadata(listener: () => void) {
+  metadataListeners.add(listener);
+  return () => metadataListeners.delete(listener);
+}
+
+export function useImageMetadataVersion() {
+  return useSyncExternalStore(
+    subscribeToImageMetadata,
+    () => metadataVersion,
+    () => metadataVersion
+  );
+}
 
 function prepareImage(source: string) {
   let pending = imageMetadataCache.get(source);
@@ -43,11 +65,17 @@ function prepareImage(source: string) {
         },
         renderSource,
       }))
-      .catch(() => null);
+      .catch(() => null)
+      .then((image) => {
+        publishPreparedImage(source, image);
+        return image;
+      });
     imageMetadataCache.set(source, pending);
 
     if (imageMetadataCache.size > 32) {
-      imageMetadataCache.delete(imageMetadataCache.keys().next().value!);
+      const oldestSource = imageMetadataCache.keys().next().value!;
+      imageMetadataCache.delete(oldestSource);
+      preparedImageCache.delete(oldestSource);
     }
   }
 
@@ -55,21 +83,35 @@ function prepareImage(source: string) {
 }
 
 function usePreparedImage(source: string) {
-  const [preparedImage, setPreparedImage] = useState<PreparedImage | null>(null);
+  const version = useImageMetadataVersion();
 
   useEffect(() => {
-    let cancelled = false;
-    setPreparedImage(null);
-    prepareImage(source).then((next) => {
-      if (!cancelled) setPreparedImage(next);
-    });
+    if (!preparedImageCache.has(source)) void prepareImage(source);
+  }, [source, version]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [source]);
+  return preparedImageCache.get(source) ?? null;
+}
 
-  return preparedImage;
+export function getCachedImageDimensions(source: string) {
+  return preparedImageCache.get(source)?.dimensions ?? null;
+}
+
+export function getImagePreviewHeight(
+  source: string,
+  cellWidth: number,
+  cellHeight: number,
+  maxHeight = IMAGE_PREVIEW_HEIGHT
+) {
+  const dimensions = getCachedImageDimensions(source);
+  return dimensions
+    ? containImageInCells(
+        dimensions,
+        cellWidth,
+        cellHeight,
+        IMAGE_PREVIEW_WIDTH,
+        maxHeight
+      ).height
+    : maxHeight;
 }
 
 export function containImageInCells(
@@ -115,7 +157,14 @@ export function ImagePreview({
   const preparedImage = usePreparedImage(source);
   const terminalInfo = useTerminalInfo();
   const maxHeight = Math.max(Math.min(height, IMAGE_PREVIEW_HEIGHT), 1);
-  const previewSize = preparedImage
+  const naturalSize = preparedImage
+    ? containImageInCells(
+        preparedImage.dimensions,
+        terminalInfo.cellWidth,
+        terminalInfo.cellHeight
+      )
+    : null;
+  const previewSize = preparedImage && naturalSize && naturalSize.height > maxHeight
     ? containImageInCells(
         preparedImage.dimensions,
         terminalInfo.cellWidth,
@@ -123,7 +172,7 @@ export function ImagePreview({
         IMAGE_PREVIEW_WIDTH,
         maxHeight
       )
-    : null;
+    : naturalSize;
 
   return (
     <Box
