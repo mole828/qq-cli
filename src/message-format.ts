@@ -12,6 +12,7 @@ export function decodeCQValue(value: string) {
   return value
     .replace(/&#91;/g, "[")
     .replace(/&#93;/g, "]")
+    .replace(/&#44;/g, ",")
     .replace(/&amp;/g, "&");
 }
 
@@ -36,7 +37,12 @@ function stringAttrs(data: Record<string, unknown>) {
 }
 
 export function getImageSource(data: Record<string, string>) {
-  return data.url || data.file || data.path || null;
+  const source = data.url || data.file || data.path;
+  if (!source) return null;
+  // Some OneBot implementations return array-format segment values with CQ/HTML
+  // escaping still applied. Decode at the resource boundary so signed QQ CDN
+  // query strings such as `...?appid=...&fileid=...` remain valid.
+  return decodeCQValue(decodeCQValue(source));
 }
 
 export function getFirstImageSource(msg: ChatMessage) {
