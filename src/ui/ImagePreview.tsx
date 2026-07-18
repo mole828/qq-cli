@@ -1,4 +1,9 @@
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import { rmSync } from "node:fs";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import React, { useEffect, useSyncExternalStore } from "react";
 import { Box, Text } from "ink";
 import Image, { useTerminalInfo } from "ink-picture";
@@ -9,6 +14,7 @@ interface ImagePreviewProps {
   source: string;
   height?: number;
   clipped?: boolean;
+  forceHalfBlock?: boolean;
 }
 
 export const IMAGE_PREVIEW_WIDTH = 28;
@@ -22,13 +28,25 @@ interface ImageDimensions {
 
 interface PreparedImage {
   dimensions: ImageDimensions;
-  renderSource: string | Buffer;
+  renderSource: string;
 }
 
 const imageMetadataCache = new Map<string, Promise<PreparedImage | null>>();
 const preparedImageCache = new Map<string, PreparedImage | null>();
 const metadataListeners = new Set<() => void>();
 let metadataVersion = 0;
+let imageTempDirPromise: Promise<string> | null = null;
+
+function getImageTempDir() {
+  if (!imageTempDirPromise) {
+    imageTempDirPromise = mkdtemp(join(tmpdir(), "qq-cli-images-"));
+    void imageTempDirPromise.then((directory) => {
+      const cleanup = () => rmSync(directory, { recursive: true, force: true });
+      process.once("exit", cleanup);
+    });
+  }
+  return imageTempDirPromise;
+}
 
 function publishPreparedImage(source: string, image: PreparedImage | null) {
   preparedImageCache.set(source, image);
@@ -53,9 +71,9 @@ function prepareImage(source: string) {
   let pending = imageMetadataCache.get(source);
   if (!pending) {
     pending = loadImageSource(source)
-      .then(async (renderSource) => ({
-        image: await Jimp.read(renderSource),
-        renderSource,
+      .then(async (loadedSource) => ({
+        image: await Jimp.read(loadedSource),
+        renderSource: await cacheRenderSource(source, loadedSource),
       }))
       .then(({ image, renderSource }) => ({
         dimensions: {
@@ -91,6 +109,15 @@ function prepareImage(source: string) {
   }
 
   return pending;
+}
+
+async function cacheRenderSource(source: string, loadedSource: string | Buffer) {
+  if (typeof loadedSource === "string") return loadedSource;
+  const directory = await getImageTempDir();
+  const fileName = createHash("sha256").update(source).digest("hex");
+  const path = join(directory, fileName);
+  await writeFile(path, loadedSource);
+  return path;
 }
 
 async function loadImageSource(source: string): Promise<string | Buffer> {
@@ -212,6 +239,7 @@ export function ImagePreview({
   source,
   height = IMAGE_PREVIEW_HEIGHT,
   clipped = false,
+  forceHalfBlock = false,
 }: ImagePreviewProps) {
   const preparedImage = usePreparedImage(source);
   const failed = preparedImageCache.has(source) && preparedImage === null;
@@ -244,7 +272,7 @@ export function ImagePreview({
         <Image
           key={`${terminalInfo.cellWidth}x${terminalInfo.cellHeight}`}
           src={preparedImage.renderSource}
-          protocol={clipped ? "halfBlock" : undefined}
+          protocol={clipped || forceHalfBlock ? "halfBlock" : undefined}
           width={previewSize.width}
           height={previewSize.height}
           alt="[image]"

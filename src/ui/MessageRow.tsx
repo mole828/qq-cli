@@ -28,6 +28,7 @@ interface MessageRowProps {
   cropTop?: number;
   visibleRows?: number;
   clipped?: boolean;
+  isScrolling?: boolean;
 }
 
 export function MessageRow({
@@ -42,6 +43,7 @@ export function MessageRow({
   cropTop = 0,
   visibleRows,
   clipped = false,
+  isScrolling = false,
 }: MessageRowProps) {
   const isMine = msg.senderId === selfId;
   const time = formatTime(msg.timestamp);
@@ -98,6 +100,7 @@ export function MessageRow({
               source={imageSource}
               height={imagePreviewHeight}
               clipped={clipped}
+              forceHalfBlock={isScrolling}
             />
           </Box>
         )}
@@ -149,6 +152,7 @@ export function MessageRow({
             source={imageSource}
             height={imagePreviewHeight}
             clipped={clipped}
+            forceHalfBlock={isScrolling}
           />
         </Box>
       )}

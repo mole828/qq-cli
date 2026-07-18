@@ -30,6 +30,7 @@ interface MessageListProps {
   imageMode: ImageMode;
   scrollOffset: number;
   messageGap: number;
+  isScrolling?: boolean;
 }
 
 function getMessageRowCost(
@@ -203,6 +204,7 @@ export function MessageList({
   imageMode,
   messageGap,
   scrollOffset,
+  isScrolling = false,
 }: MessageListProps) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
   const visibleMsgs = getVisibleMessages(
@@ -222,7 +224,7 @@ export function MessageList({
     <>
       {visibleMsgs.map(({ msg, cropTop, visibleRows, clipped }, i) => (
         <MessageRow
-          key={`${msg.id}-${i}`}
+          key={`${msg.chatType}:${msg.contactId}:${msg.id}`}
           msg={msg}
           index={i}
           selfId={selfId}
@@ -243,6 +245,7 @@ export function MessageList({
           cropTop={cropTop}
           visibleRows={visibleRows}
           clipped={clipped}
+          isScrolling={isScrolling}
         />
       ))}
     </>
