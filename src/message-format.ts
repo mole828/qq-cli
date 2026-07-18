@@ -5,6 +5,7 @@ import { isWebUrl, terminalLink } from "./terminal-text.js";
 interface CompactOptions {
   imageMode?: ImageMode;
   terminalLinks?: boolean;
+  forwardMessageId?: boolean;
 }
 
 export function decodeCQValue(value: string) {
@@ -26,6 +27,14 @@ function parseCQAttrs(attrs: string) {
   return Object.fromEntries(data);
 }
 
+function stringAttrs(data: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(data).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string"
+    )
+  );
+}
+
 export function getImageSource(data: Record<string, string>) {
   return data.url || data.file || data.path || null;
 }
@@ -34,7 +43,7 @@ export function getFirstImageSource(msg: ChatMessage) {
   if (msg.segments?.length) {
     for (const seg of msg.segments) {
       if (seg.type !== "image") continue;
-      const source = getImageSource(seg.data);
+      const source = getImageSource(stringAttrs(seg.data));
       if (source) return source;
     }
   }
@@ -44,7 +53,7 @@ export function getFirstImageSource(msg: ChatMessage) {
   return getImageSource(parseCQAttrs(match[1]));
 }
 
-export function compactCQ(raw: string, options?: CompactOptions) {
+export function compactCQ(raw: string, options?: CompactOptions): string {
   return raw.replace(
     /\[CQ:([^,\]]+)((?:,[^\]]*)?)\]/g,
     (_, type: string, attrs: string) => {
@@ -135,10 +144,11 @@ function compactNewsJson(data: Record<string, string>, terminalLinks = false) {
 
 function compactSegment(
   type: string,
-  data: Record<string, string>,
+  rawData: Record<string, unknown>,
   imageMode: ImageMode,
   terminalLinks = false
-) {
+): string {
+  const data = stringAttrs(rawData);
   const resource = resourceEntry(data);
   const resourceUrl = resource?.[1];
   if (
@@ -154,7 +164,7 @@ function compactSegment(
 
   switch (type) {
     case "text":
-      return data.text || "";
+      return data.text ? compactCQ(data.text, { imageMode, terminalLinks }) : "";
     case "image":
       return imageToken(data, imageMode);
     case "record":
@@ -187,12 +197,16 @@ export function compactMessage(
   const imageMode = options?.imageMode ?? "off";
   if (msg.segments?.length) {
     const parts = msg.segments.map((seg) =>
-      compactSegment(
-        seg.type,
-        seg.data,
-        imageMode,
-        options?.terminalLinks ?? false
-      )
+      seg.type === "forward"
+        ? options?.forwardMessageId === false
+          ? "[forward]"
+          : `[forward #${msg.id}]`
+        : compactSegment(
+            seg.type,
+            seg.data,
+            imageMode,
+            options?.terminalLinks ?? false
+          )
     );
     return parts.join(" ");
   }

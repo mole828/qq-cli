@@ -7,6 +7,7 @@ export const HELP_ROWS = [
   ["/groups [query]", "Search channel sessions"],
   ["/friends [query]", "Search direct sessions"],
   ["/images off|inline", "Set image display mode"],
+  ["/forward <message-id>", "Inspect a merged forward message"],
   ["/reload", "Reload account info and session index"],
   ["/help", "Show this command panel"],
   ["Tab", "Complete a command after /"],

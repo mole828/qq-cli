@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { Box, useInput, useWindowSize, useApp } from "ink";
 import { useTerminalInfo } from "ink-picture";
-import type { Contact, ChatMessage, MessageSegment } from "./types.js";
+import type { Contact, ChatMessage, MessageSegment, ForwardNode } from "./types.js";
 import { QQClient } from "./qq-client.js";
 import {
   attachmentToBase64,
@@ -19,6 +19,7 @@ import {
 import { Composer } from "./ui/Composer.js";
 import { EmptyState } from "./ui/EmptyState.js";
 import { HelpPanel } from "./ui/HelpPanel.js";
+import { ForwardPanel, getForwardPanelMaxOffset } from "./ui/ForwardPanel.js";
 import { COMPOSER_ROWS, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
 import { SessionPicker } from "./ui/SessionPicker.js";
 import {
@@ -54,6 +55,7 @@ const COMPLETABLE_COMMANDS = [
   "/groups",
   "/friends",
   "/images",
+  "/forward",
   "/reload",
   "/help",
   "/exit",
@@ -96,6 +98,12 @@ export function App() {
   const [statusMsg, setStatusMsg] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [helpMode, setHelpMode] = useState(false);
+  const [forwardView, setForwardView] = useState<{
+    id: string;
+    nodes: ForwardNode[] | null;
+    loading: boolean;
+  } | null>(null);
+  const [forwardScrollOffset, setForwardScrollOffset] = useState(0);
   const [imageMode, setImageMode] = useState(() => getInitialImageMode());
   const [messageGap] = useState(() => getInitialMessageGap());
   const messageViewportRef = useRef({
@@ -291,6 +299,7 @@ export function App() {
 
   // picker handleSubmit - Enter selects highlighted contact
   function handleSubmit(value: string) {
+    if (forwardView) return;
     if (helpMode) {
       setHelpMode(false);
       setInputText("");
@@ -320,6 +329,7 @@ export function App() {
   // ---- modal helpers ----
   function openModal(baseList: Contact[], preFill: string) {
     setHelpMode(false);
+    setForwardView(null);
     setModalBaseList(baseList);
     setModalMode(true);
     setModalHighlight(0);
@@ -369,7 +379,10 @@ export function App() {
     }
 
     if (key.escape) {
-      if (helpMode) {
+      if (forwardView) {
+        setForwardView(null);
+        setForwardScrollOffset(0);
+      } else if (helpMode) {
         setHelpMode(false);
       } else if (modalMode) {
         closeModal();
@@ -383,6 +396,39 @@ export function App() {
     }
 
     if (helpMode) {
+      return;
+    }
+
+    if (forwardView) {
+      if (key.tab && key.shift) {
+        setImageMode((current) => current === "off" ? "inline" : "off");
+        setForwardScrollOffset(0);
+        return;
+      }
+      const maxOffset = getForwardPanelMaxOffset(
+        forwardView.id,
+        forwardView.nodes,
+        bodyRows,
+        termWidth,
+        terminalInfo.cellWidth,
+        terminalInfo.cellHeight,
+        imageMode
+      );
+      if (key.upArrow) {
+        setForwardScrollOffset((offset) => Math.min(offset + 1, maxOffset));
+      } else if (key.downArrow) {
+        setForwardScrollOffset((offset) => Math.max(offset - 1, 0));
+      } else if (key.pageUp) {
+        setForwardScrollOffset((offset) =>
+          Math.min(offset + Math.max(Math.floor(bodyRows / 2), 1), maxOffset)
+        );
+      } else if (key.pageDown) {
+        setForwardScrollOffset((offset) =>
+          Math.max(offset - Math.max(Math.floor(bodyRows / 2), 1), 0)
+        );
+      } else if (key.end) {
+        setForwardScrollOffset(0);
+      }
       return;
     }
 
@@ -680,6 +726,36 @@ export function App() {
         setInputText("");
         break;
       }
+      case "/forward": {
+        const messageId = args.trim();
+        if (!messageId) {
+          setStatusMsg("Usage: /forward <message-id>");
+          setInputText("");
+          break;
+        }
+        const source = messagesRef.current.find(
+          (message) =>
+            String(message.id) === messageId &&
+            message.segments?.some((segment) => segment.type === "forward")
+        );
+        const segment = source?.segments?.find((item) => item.type === "forward");
+        const forwardId = segment?.data.id;
+        if (typeof forwardId !== "string" && typeof forwardId !== "number") {
+          setStatusMsg(`Forward not found · ${messageId}`);
+          setInputText("");
+          break;
+        }
+        const id = String(forwardId);
+        setInputText("");
+        setForwardScrollOffset(0);
+        setForwardView({ id, nodes: null, loading: true });
+        void qqRef.current?.getForwardMessage(id).then((nodes) => {
+          setForwardView((current) =>
+            current?.id === id ? { id, nodes, loading: false } : current
+          );
+        });
+        break;
+      }
       case "/reload":
         loadedRef.current = false;
         setInputText("");
@@ -785,7 +861,19 @@ export function App() {
         flexShrink={1}
         overflow="hidden"
       >
-        {helpMode ? (
+        {forwardView ? (
+          <ForwardPanel
+            forwardId={forwardView.id}
+            nodes={forwardView.nodes}
+            loading={forwardView.loading}
+            scrollOffset={forwardScrollOffset}
+            bodyRows={bodyRows}
+            termWidth={termWidth}
+            cellWidth={terminalInfo.cellWidth}
+            cellHeight={terminalInfo.cellHeight}
+            imageMode={imageMode}
+          />
+        ) : helpMode ? (
           <HelpPanel />
         ) : modalMode ? (
           <SessionPicker
@@ -828,6 +916,7 @@ export function App() {
         onPaste={handlePaste}
         helpMode={helpMode}
         modalMode={modalMode}
+        forwardMode={Boolean(forwardView)}
         activeSession={activeSession}
         statusMsg={statusMsg}
         connected={connected}

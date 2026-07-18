@@ -36,7 +36,14 @@ export interface AnonymousInfo {
 
 export interface MessageSegment {
   type: "text" | "image" | "record" | "video" | "at" | "face" | "reply" | "forward" | string;
-  data: Record<string, string>;
+  data: Record<string, unknown>;
+}
+
+export interface ForwardNode {
+  senderId?: string;
+  senderName: string;
+  timestamp?: number;
+  segments: MessageSegment[];
 }
 
 export interface OneBotApiRequest {

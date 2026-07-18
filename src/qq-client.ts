@@ -7,6 +7,7 @@ import type {
   Contact,
   ChatMessage,
   MessageSegment,
+  ForwardNode,
 } from "./types.js";
 
 function parseWsUrl(rawUrl: string): {
@@ -307,6 +308,64 @@ export class QQClient {
     }
     logger.warn("Send message failed", { type: chatType, target: targetId, retcode: res.retcode });
     return null;
+  }
+
+  async getForwardMessage(id: string): Promise<ForwardNode[] | null> {
+    // OneBot v11 names this parameter `id`; NapCat uses `message_id`.
+    // Both implementations ignore unknown extra parameters.
+    const res = await this.callApi("get_forward_msg", { id, message_id: id });
+    const data = res.data as { message?: unknown; messages?: unknown } | null;
+    const rawNodes = Array.isArray(data?.message)
+      ? data.message
+      : Array.isArray(data?.messages)
+        ? data.messages
+        : null;
+    if (res.status !== "ok" || !rawNodes) {
+      logger.warn("Failed to load forward message", {
+        id,
+        retcode: res.retcode,
+        dataType: data === null ? "null" : typeof data,
+        dataKeys: data && typeof data === "object" ? Object.keys(data) : [],
+      });
+      return null;
+    }
+
+    const nodes = rawNodes.flatMap((item): ForwardNode[] => {
+      if (!item || typeof item !== "object") return [];
+      const record = item as Record<string, unknown>;
+      const node = record.type === "node" && record.data && typeof record.data === "object"
+        ? record.data as Record<string, unknown>
+        : record;
+      const sender = node.sender && typeof node.sender === "object"
+        ? node.sender as Record<string, unknown>
+        : {};
+      const content = node.content ?? node.message;
+      const segments: MessageSegment[] = Array.isArray(content)
+        ? content.filter((part): part is MessageSegment =>
+            Boolean(part) &&
+            typeof part === "object" &&
+            typeof (part as { type?: unknown }).type === "string" &&
+            Boolean((part as { data?: unknown }).data) &&
+            typeof (part as { data?: unknown }).data === "object"
+          )
+        : typeof content === "string"
+          ? [{ type: "text", data: { text: content } }]
+          : [];
+      const rawSenderId = node.user_id ?? node.uin ?? sender.user_id ?? sender.uin;
+      const senderId = rawSenderId === undefined ? undefined : String(rawSenderId);
+      const timestamp = Number(node.time);
+      return [{
+        senderId,
+        senderName: typeof (node.nickname ?? node.name ?? sender.nickname) === "string"
+          ? String(node.nickname ?? node.name ?? sender.nickname)
+          : senderId || "unknown",
+        timestamp: Number.isFinite(timestamp) ? timestamp * 1000 : undefined,
+        segments,
+      }];
+    });
+
+    logger.info("Forward message loaded", { id, count: nodes.length });
+    return nodes;
   }
 
   private callApi(
