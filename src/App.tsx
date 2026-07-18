@@ -96,6 +96,7 @@ export function App() {
   const [isImageScrolling, setIsImageScrolling] = useState(false);
   const [activeSession, setActiveSession] = useState<Contact | null>(null);
   const [inputText, setInputText] = useState("");
+  const [moveCursorToEndKey, setMoveCursorToEndKey] = useState(0);
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   const [statusMsg, setStatusMsg] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
@@ -611,13 +612,30 @@ export function App() {
     }
 
     if (key.tab) {
-      if (!inputText.startsWith("/") || inputText.includes(" ")) return;
-
       const activeCompletion = completionRef.current;
-      const prefix = activeCompletion?.prefix ?? inputText.toLowerCase();
-      const matches = COMPLETABLE_COMMANDS.filter((command) =>
-        command.startsWith(prefix)
+      const forwardMatch = inputText.match(/^\/forward\s+(\S*)$/i);
+      const isForwardCompletion = Boolean(forwardMatch);
+      const prefix = activeCompletion?.prefix ?? (
+        isForwardCompletion
+          ? `/forward ${forwardMatch?.[1] ?? ""}`
+          : inputText.toLowerCase()
       );
+      const forwardIdPrefix = prefix.slice("/forward ".length);
+      const matches = isForwardCompletion && activeSession
+        ? [...new Set(
+            messagesRef.current
+              .filter(
+                (message) =>
+                  belongsToSession(message, activeSession) &&
+                  message.segments?.some((segment) => segment.type === "forward") &&
+                  String(message.id).startsWith(forwardIdPrefix)
+              )
+              .sort((a, b) => b.timestamp - a.timestamp)
+              .map((message) => `/forward ${message.id}`)
+          )]
+        : !inputText.includes(" ") && inputText.startsWith("/")
+        ? COMPLETABLE_COMMANDS.filter((command) => command.startsWith(prefix))
+        : [];
       if (matches.length === 0) return;
 
       const index = activeCompletion
@@ -625,6 +643,7 @@ export function App() {
         : 0;
       completionRef.current = { prefix, index };
       setInputText(matches[index]);
+      setMoveCursorToEndKey((current) => current + 1);
       return;
     }
 
@@ -946,6 +965,7 @@ export function App() {
         termWidth={termWidth}
         attachments={attachments}
         imageMode={imageMode}
+        moveCursorToEndKey={moveCursorToEndKey}
       />
     </Box>
   );

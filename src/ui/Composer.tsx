@@ -22,6 +22,7 @@ interface ComposerProps {
   termWidth: number;
   attachments: ImageAttachment[];
   imageMode: ImageMode;
+  moveCursorToEndKey: number;
 }
 
 export function Composer({
@@ -39,6 +40,7 @@ export function Composer({
   termWidth,
   attachments,
   imageMode,
+  moveCursorToEndKey,
 }: ComposerProps) {
   const divider = "─".repeat(Math.max(termWidth - 2, 4));
   const composerWidth = Math.max(termWidth - 2, 12);
@@ -130,6 +132,7 @@ export function Composer({
               onPaste={onPaste}
               focus={!helpMode && !forwardMode}
               placeholder={composerPlaceholder}
+              moveCursorToEndKey={moveCursorToEndKey}
             />
           </Text>
           <Text backgroundColor={composerBg}>

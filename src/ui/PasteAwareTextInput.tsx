@@ -8,6 +8,7 @@ interface PasteAwareTextInputProps {
   onPaste?: (value: string) => boolean;
   focus?: boolean;
   placeholder?: string;
+  moveCursorToEndKey?: number;
 }
 
 export function PasteAwareTextInput({
@@ -17,12 +18,17 @@ export function PasteAwareTextInput({
   onPaste,
   focus = true,
   placeholder = "",
+  moveCursorToEndKey = 0,
 }: PasteAwareTextInputProps) {
   const [cursorOffset, setCursorOffset] = useState(value.length);
 
   useEffect(() => {
     setCursorOffset((current) => Math.min(current, value.length));
   }, [value]);
+
+  useEffect(() => {
+    setCursorOffset(value.length);
+  }, [moveCursorToEndKey]);
 
   usePaste(
     (pastedText) => {
