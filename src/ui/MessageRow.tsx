@@ -29,6 +29,7 @@ interface MessageRowProps {
   visibleRows?: number;
   clipped?: boolean;
   isScrolling?: boolean;
+  replyLookup?: ReadonlyMap<string, ChatMessage>;
 }
 
 export function MessageRow({
@@ -44,14 +45,15 @@ export function MessageRow({
   visibleRows,
   clipped = false,
   isScrolling = false,
+  replyLookup,
 }: MessageRowProps) {
   const isMine = msg.senderId === selfId;
   const time = formatTime(msg.timestamp);
   const sender = isMine ? "you" : msg.senderName || String(msg.senderId);
   const rowWidth = Math.max(termWidth - 2, 12);
-  const rawContent = compactMessage(msg, { imageMode });
+  const rawContent = compactMessage(msg, { imageMode, replyLookup });
   const linkedContent =
-    compactMessage(msg, { imageMode, terminalLinks: true }) || "(empty)";
+    compactMessage(msg, { imageMode, terminalLinks: true, replyLookup }) || "(empty)";
   const imageSource =
     imageMode === "inline" && renderInlineImage ? getFirstImageSource(msg) : null;
 

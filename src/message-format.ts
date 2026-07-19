@@ -6,6 +6,7 @@ interface CompactOptions {
   imageMode?: ImageMode;
   terminalLinks?: boolean;
   forwardMessageId?: boolean;
+  replyLookup?: ReadonlyMap<string, ChatMessage>;
 }
 
 export function decodeCQValue(value: string) {
@@ -69,7 +70,8 @@ export function compactCQ(raw: string, options?: CompactOptions): string {
         type,
         data,
         options?.imageMode ?? "off",
-        options?.terminalLinks ?? false
+        options?.terminalLinks ?? false,
+        options?.replyLookup
       );
     }
   );
@@ -152,7 +154,8 @@ function compactSegment(
   type: string,
   rawData: Record<string, unknown>,
   imageMode: ImageMode,
-  terminalLinks = false
+  terminalLinks = false,
+  replyLookup?: ReadonlyMap<string, ChatMessage>
 ): string {
   const data = stringAttrs(rawData);
   const resource = resourceEntry(data);
@@ -184,7 +187,7 @@ function compactSegment(
     case "json":
       return compactNewsJson(data, terminalLinks);
     case "reply":
-      return "[reply]";
+      return replyToken(data, replyLookup, imageMode);
     case "at":
       return `@${data.qq || "user"}`;
     case "face":
@@ -194,6 +197,32 @@ function compactSegment(
     default:
       return `[${type}]`;
   }
+}
+
+function replyToken(
+  data: Record<string, string>,
+  replyLookup: ReadonlyMap<string, ChatMessage> | undefined,
+  imageMode: ImageMode
+) {
+  const id = data.id || data.message_id;
+  if (!id) return "[reply]";
+
+  const target = replyLookup?.get(String(id));
+  if (!target) return `[reply #${id}]`;
+
+  const previewMessage = target.segments?.length
+    ? { ...target, segments: target.segments.filter((seg) => seg.type !== "reply") }
+    : target;
+  const content = compactMessage(previewMessage, { imageMode })
+    .replace(/\s+/g, " ")
+    .trim();
+  const chars = Array.from(content);
+  const excerpt = chars.slice(0, 5).join("") + (chars.length > 5 ? "…" : "");
+  const sender = target.senderName || String(target.senderId);
+
+  return excerpt
+    ? `[reply #${id} ${sender}: ${excerpt}]`
+    : `[reply #${id} ${sender}]`;
 }
 
 export function compactMessage(
@@ -211,7 +240,8 @@ export function compactMessage(
             seg.type,
             seg.data,
             imageMode,
-            options?.terminalLinks ?? false
+            options?.terminalLinks ?? false,
+            options?.replyLookup
           )
     );
     return parts.join(" ");
@@ -220,5 +250,6 @@ export function compactMessage(
   return compactCQ(msg.content, {
     imageMode,
     terminalLinks: options?.terminalLinks,
+    replyLookup: options?.replyLookup,
   });
 }

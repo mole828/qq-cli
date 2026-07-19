@@ -206,7 +206,8 @@ export function App() {
                 viewport.cellWidth,
                 viewport.cellHeight,
                 viewport.imageMode,
-                viewport.messageGap
+                viewport.messageGap,
+                messagesRef.current
               )
           );
         }

@@ -12,6 +12,10 @@ import { MessageRow } from "./MessageRow.js";
 const MAX_BODY_LINES = 3;
 const INLINE_IMAGE_ROW_COST = IMAGE_PREVIEW_HEIGHT;
 
+function buildReplyLookup(messages: ChatMessage[]) {
+  return new Map(messages.map((message) => [String(message.id), message]));
+}
+
 interface VisibleMessage {
   msg: ChatMessage;
   cropTop: number;
@@ -41,12 +45,13 @@ function getMessageRowCost(
   cellHeight: number,
   imageMode: ImageMode,
   canRenderInlineImages: boolean,
-  messageGap: number
+  messageGap: number,
+  replyLookup?: ReadonlyMap<string, ChatMessage>
 ) {
   const isMine = msg.senderId === selfId || msg.isMine;
   const textWidth = Math.max(termWidth - (isMine ? 6 : 8), 16);
   const lineCount = wrapCells(
-    compactMessage(msg, { imageMode }) || "(empty)",
+    compactMessage(msg, { imageMode, replyLookup }) || "(empty)",
     textWidth,
     MAX_BODY_LINES
   ).length;
@@ -66,7 +71,8 @@ export function getMessageScrollRows(
   cellWidth: number,
   cellHeight: number,
   imageMode: ImageMode,
-  messageGap: number
+  messageGap: number,
+  messages: ChatMessage[] = [msg]
 ) {
   return getMessageRowCost(
     msg,
@@ -76,7 +82,8 @@ export function getMessageScrollRows(
     cellHeight,
     imageMode,
     bodyRows >= INLINE_IMAGE_ROW_COST,
-    messageGap
+    messageGap,
+    buildReplyLookup(messages)
   );
 }
 
@@ -122,6 +129,7 @@ export function getMaxMessageScrollOffset(
   messageGap: number
 ) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
+  const replyLookup = buildReplyLookup(messages);
   const totalRows = messages.reduce(
     (sum, msg) =>
       sum +
@@ -133,7 +141,8 @@ export function getMaxMessageScrollOffset(
         cellHeight,
         imageMode,
         canRenderInlineImages,
-        messageGap
+        messageGap,
+        replyLookup
       ),
     0
   );
@@ -153,6 +162,7 @@ function getVisibleMessages(
   messageGap: number,
   scrollOffset: number
 ) {
+  const replyLookup = buildReplyLookup(messages);
   const rowCosts = messages.map((msg) =>
     getMessageRowCost(
       msg,
@@ -162,7 +172,8 @@ function getVisibleMessages(
       cellHeight,
       imageMode,
       canRenderInlineImages,
-      messageGap
+      messageGap,
+      replyLookup
     )
   );
   const totalRows = rowCosts.reduce((sum, rows) => sum + rows, 0);
@@ -207,6 +218,7 @@ export function MessageList({
   isScrolling = false,
 }: MessageListProps) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
+  const replyLookup = buildReplyLookup(messages);
   const visibleMsgs = getVisibleMessages(
     messages,
     bodyRows,
@@ -246,6 +258,7 @@ export function MessageList({
           visibleRows={visibleRows}
           clipped={clipped}
           isScrolling={isScrolling}
+          replyLookup={replyLookup}
         />
       ))}
     </>
