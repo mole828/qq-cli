@@ -46,18 +46,25 @@ export function getImageSource(data: Record<string, string>) {
   return decodeCQValue(decodeCQValue(source));
 }
 
-export function getFirstImageSource(msg: ChatMessage) {
+export function getImageSources(msg: ChatMessage) {
+  const sources: string[] = [];
+
   if (msg.segments?.length) {
     for (const seg of msg.segments) {
       if (seg.type !== "image") continue;
       const source = getImageSource(stringAttrs(seg.data));
-      if (source) return source;
+      if (source) sources.push(source);
     }
+
+    if (sources.length > 0) return sources;
   }
 
-  const match = msg.content.match(/\[CQ:image((?:,[^\]]*)?)\]/);
-  if (!match) return null;
-  return getImageSource(parseCQAttrs(match[1]));
+  for (const match of msg.content.matchAll(/\[CQ:image((?:,[^\]]*)?)\]/g)) {
+    const source = getImageSource(parseCQAttrs(match[1]));
+    if (source) sources.push(source);
+  }
+
+  return sources;
 }
 
 export function compactCQ(raw: string, options?: CompactOptions): string {

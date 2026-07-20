@@ -17,7 +17,6 @@ interface ForwardPanelProps {
   cellWidth: number;
   cellHeight: number;
   imageMode: ImageMode;
-  isScrolling: boolean;
 }
 
 const FORWARD_HEADER_ROWS = 3;
@@ -51,7 +50,6 @@ export function ForwardPanel({
   cellWidth,
   cellHeight,
   imageMode,
-  isScrolling,
 }: ForwardPanelProps) {
   const messageRows = Math.max(bodyRows - FORWARD_HEADER_ROWS, 1);
   const messages = forwardNodesToMessages(forwardId, nodes);
@@ -87,7 +85,6 @@ export function ForwardPanel({
             imageMode={imageMode}
             scrollOffset={scrollOffset}
             messageGap={FORWARD_MESSAGE_GAP}
-            isScrolling={isScrolling}
           />
         </Box>
       )}

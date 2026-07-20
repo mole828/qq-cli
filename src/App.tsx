@@ -85,7 +85,6 @@ export function App() {
   const messageScrollOffsetRef = useRef(0);
   const attachmentsRef = useRef<ImageAttachment[]>([]);
   const completionRef = useRef<{ prefix: string; index: number } | null>(null);
-  const imageScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(0);
@@ -93,7 +92,6 @@ export function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageScrollOffset, setMessageScrollOffset] = useState(0);
-  const [isImageScrolling, setIsImageScrolling] = useState(false);
   const [activeSession, setActiveSession] = useState<Contact | null>(null);
   const [inputText, setInputText] = useState("");
   const [moveCursorToEndKey, setMoveCursorToEndKey] = useState(0);
@@ -158,20 +156,10 @@ export function App() {
   }, [attachments]);
 
   useEffect(() => () => {
-    if (imageScrollTimerRef.current) clearTimeout(imageScrollTimerRef.current);
     for (const attachment of attachmentsRef.current) {
       void removeAttachment(attachment);
     }
   }, []);
-
-  function markImageScrollActivity() {
-    setIsImageScrolling(true);
-    if (imageScrollTimerRef.current) clearTimeout(imageScrollTimerRef.current);
-    imageScrollTimerRef.current = setTimeout(() => {
-      imageScrollTimerRef.current = null;
-      setIsImageScrolling(false);
-    }, 120);
-  }
 
   // ---- WebSocket connection ----
   useEffect(() => {
@@ -429,18 +417,14 @@ export function App() {
         imageMode
       );
       if (key.upArrow) {
-        markImageScrollActivity();
         setForwardScrollOffset((offset) => Math.min(offset + 1, maxOffset));
       } else if (key.downArrow) {
-        markImageScrollActivity();
         setForwardScrollOffset((offset) => Math.max(offset - 1, 0));
       } else if (key.pageUp) {
-        markImageScrollActivity();
         setForwardScrollOffset((offset) =>
           Math.min(offset + Math.max(Math.floor(bodyRows / 2), 1), maxOffset)
         );
       } else if (key.pageDown) {
-        markImageScrollActivity();
         setForwardScrollOffset((offset) =>
           Math.max(offset - Math.max(Math.floor(bodyRows / 2), 1), 0)
         );
@@ -547,7 +531,6 @@ export function App() {
       ? messages.filter((message) => belongsToSession(message, activeSession))
       : [];
     if (key.upArrow && activeSession) {
-      markImageScrollActivity();
       const maxOffset = getMaxMessageScrollOffset(
         sessionMessages,
         bodyRows,
@@ -562,12 +545,10 @@ export function App() {
       return;
     }
     if (key.downArrow && activeSession) {
-      markImageScrollActivity();
       setMessageScrollOffset((offset) => Math.max(offset - 1, 0));
       return;
     }
     if (key.pageUp && activeSession) {
-      markImageScrollActivity();
       setMessageScrollOffset((offset) =>
         moveMessageScrollOffset(
           sessionMessages,
@@ -585,7 +566,6 @@ export function App() {
       return;
     }
     if (key.pageDown && activeSession) {
-      markImageScrollActivity();
       setMessageScrollOffset((offset) =>
         moveMessageScrollOffset(
           sessionMessages,
@@ -912,7 +892,6 @@ export function App() {
             cellWidth={terminalInfo.cellWidth}
             cellHeight={terminalInfo.cellHeight}
             imageMode={imageMode}
-            isScrolling={isImageScrolling}
           />
         ) : helpMode ? (
           <HelpPanel />
@@ -944,7 +923,6 @@ export function App() {
             cellHeight={terminalInfo.cellHeight}
             bodyRows={bodyRows}
             imageMode={imageMode}
-            isScrolling={isImageScrolling}
             scrollOffset={effectiveMessageScrollOffset}
             messageGap={messageGap}
           />

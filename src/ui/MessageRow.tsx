@@ -2,9 +2,14 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { ChatMessage, Contact } from "../types.js";
 import type { ImageMode } from "../config.js";
-import { compactMessage, getFirstImageSource } from "../message-format.js";
-import { linkifyUrls, truncateCells, wrapCells } from "../terminal-text.js";
-import { ImagePreview } from "./ImagePreview.js";
+import { compactMessage, getImageSources } from "../message-format.js";
+import {
+  linkifyUrls,
+  singleLine,
+  truncateCells,
+  wrapCells,
+} from "../terminal-text.js";
+import { ImageStrip } from "./ImageStrip.js";
 
 const MAX_BODY_LINES = 3;
 
@@ -28,7 +33,6 @@ interface MessageRowProps {
   cropTop?: number;
   visibleRows?: number;
   clipped?: boolean;
-  isScrolling?: boolean;
   replyLookup?: ReadonlyMap<string, ChatMessage>;
 }
 
@@ -44,7 +48,6 @@ export function MessageRow({
   cropTop = 0,
   visibleRows,
   clipped = false,
-  isScrolling = false,
   replyLookup,
 }: MessageRowProps) {
   const isMine = msg.senderId === selfId;
@@ -54,8 +57,8 @@ export function MessageRow({
   const rawContent = compactMessage(msg, { imageMode, replyLookup });
   const linkedContent =
     compactMessage(msg, { imageMode, terminalLinks: true, replyLookup }) || "(empty)";
-  const imageSource =
-    imageMode === "inline" && renderInlineImage ? getFirstImageSource(msg) : null;
+  const imageSources =
+    imageMode === "inline" && renderInlineImage ? getImageSources(msg) : [];
 
   if (isMine) {
     const promptBg = "#3a3a3a";
@@ -66,7 +69,7 @@ export function MessageRow({
       MAX_BODY_LINES
     );
     const renderLines = contentLines.length === 1
-      ? [linkedContent]
+      ? [singleLine(linkedContent)]
       : contentLines.map((line) => linkifyUrls(line));
 
     const row = (
@@ -96,13 +99,13 @@ export function MessageRow({
             </Text>
           ))}
         </Box>
-        {imageSource && (
+        {imageSources.length > 0 && (
           <Box paddingLeft={4} height={imagePreviewHeight} overflow="hidden">
-            <ImagePreview
-              source={imageSource}
+            <ImageStrip
+              sources={imageSources}
+              width={Math.max(rowWidth - 4, 1)}
               height={imagePreviewHeight}
               clipped={clipped}
-              forceHalfBlock={isScrolling}
             />
           </Box>
         )}
@@ -121,7 +124,7 @@ export function MessageRow({
     MAX_BODY_LINES
   );
   const renderLines = contentLines.length === 1
-    ? [linkedContent]
+    ? [singleLine(linkedContent)]
     : contentLines.map((line) => linkifyUrls(line));
 
   const row = (
@@ -148,13 +151,13 @@ export function MessageRow({
           </Text>
         ))}
       </Box>
-      {imageSource && (
+      {imageSources.length > 0 && (
         <Box paddingLeft={2} height={imagePreviewHeight} overflow="hidden">
-          <ImagePreview
-            source={imageSource}
+          <ImageStrip
+            sources={imageSources}
+            width={Math.max(termWidth - 6, 1)}
             height={imagePreviewHeight}
             clipped={clipped}
-            forceHalfBlock={isScrolling}
           />
         </Box>
       )}

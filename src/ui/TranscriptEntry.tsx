@@ -1,10 +1,10 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { ImageMode } from "../config.js";
-import { compactMessage, getFirstImageSource } from "../message-format.js";
+import { compactMessage, getImageSources } from "../message-format.js";
 import { linkifyUrls } from "../terminal-text.js";
 import type { ChatMessage } from "../types.js";
-import { ImagePreview } from "./ImagePreview.js";
+import { ImageStrip } from "./ImageStrip.js";
 
 export interface TranscriptEntry {
   key: string;
@@ -42,9 +42,10 @@ export function TranscriptEntryView({
   const sender = isMine ? "you" : message.senderName || String(message.senderId);
   const content = compactMessage(message, { imageMode, terminalLinks: true }) || "(empty)";
   const linkedContent = linkifyUrls(content);
-  const imageSource = renderInlineImage && imageMode === "inline"
-    ? getFirstImageSource(message)
-    : null;
+  const imageSources = renderInlineImage && imageMode === "inline"
+    ? getImageSources(message)
+    : [];
+  const stripWidth = Math.max(termWidth - 4, 1);
 
   if (isMine) {
     return (
@@ -60,8 +61,12 @@ export function TranscriptEntryView({
           <Text bold>› </Text>
           {linkedContent}
         </Text>
-        {imageSource && (
-          <ImagePreview source={imageSource} height={imagePreviewHeight} />
+        {imageSources.length > 0 && (
+          <ImageStrip
+            sources={imageSources}
+            width={stripWidth}
+            height={imagePreviewHeight ?? 10}
+          />
         )}
       </Box>
     );
@@ -74,8 +79,12 @@ export function TranscriptEntryView({
         <Text dimColor> · {formatTime(message.timestamp)}</Text>
       </Text>
       <Text wrap="wrap">{linkedContent}</Text>
-      {imageSource && (
-        <ImagePreview source={imageSource} height={imagePreviewHeight} />
+      {imageSources.length > 0 && (
+        <ImageStrip
+          sources={imageSources}
+          width={stripWidth}
+          height={imagePreviewHeight ?? 10}
+        />
       )}
     </Box>
   );

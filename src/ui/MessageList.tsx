@@ -1,7 +1,7 @@
 import React from "react";
 import type { ChatMessage, Contact } from "../types.js";
 import type { ImageMode } from "../config.js";
-import { compactMessage, getFirstImageSource } from "../message-format.js";
+import { compactMessage, getImageSources } from "../message-format.js";
 import { wrapCells } from "../terminal-text.js";
 import {
   getImagePreviewHeight,
@@ -11,6 +11,18 @@ import { MessageRow } from "./MessageRow.js";
 
 const MAX_BODY_LINES = 3;
 const INLINE_IMAGE_ROW_COST = IMAGE_PREVIEW_HEIGHT;
+
+function getImageStripHeight(
+  sources: string[],
+  cellWidth: number,
+  cellHeight: number
+) {
+  return sources.reduce(
+    (height, source) =>
+      Math.max(height, getImagePreviewHeight(source, cellWidth, cellHeight)),
+    0
+  );
+}
 
 function buildReplyLookup(messages: ChatMessage[]) {
   return new Map(messages.map((message) => [String(message.id), message]));
@@ -34,7 +46,6 @@ interface MessageListProps {
   imageMode: ImageMode;
   scrollOffset: number;
   messageGap: number;
-  isScrolling?: boolean;
 }
 
 function getMessageRowCost(
@@ -57,9 +68,9 @@ function getMessageRowCost(
   ).length;
   const textRows = (isMine ? lineCount : lineCount + 1) + messageGap;
   if (imageMode !== "inline" || !canRenderInlineImages) return textRows;
-  const imageSource = getFirstImageSource(msg);
-  return imageSource
-    ? textRows + getImagePreviewHeight(imageSource, cellWidth, cellHeight)
+  const imageSources = getImageSources(msg);
+  return imageSources.length > 0
+    ? textRows + getImageStripHeight(imageSources, cellWidth, cellHeight)
     : textRows;
 }
 
@@ -215,7 +226,6 @@ export function MessageList({
   imageMode,
   messageGap,
   scrollOffset,
-  isScrolling = false,
 }: MessageListProps) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
   const replyLookup = buildReplyLookup(messages);
@@ -242,22 +252,17 @@ export function MessageList({
           selfId={selfId}
           activeSession={activeSession}
           termWidth={termWidth}
-          imagePreviewHeight={
-            getFirstImageSource(msg)
-              ? getImagePreviewHeight(
-                  getFirstImageSource(msg)!,
-                  cellWidth,
-                  cellHeight
-                )
-              : IMAGE_PREVIEW_HEIGHT
-          }
+          imagePreviewHeight={getImageStripHeight(
+            getImageSources(msg),
+            cellWidth,
+            cellHeight
+          ) || IMAGE_PREVIEW_HEIGHT}
           imageMode={imageMode}
           renderInlineImage={canRenderInlineImages}
           messageGap={messageGap}
           cropTop={cropTop}
           visibleRows={visibleRows}
           clipped={clipped}
-          isScrolling={isScrolling}
           replyLookup={replyLookup}
         />
       ))}

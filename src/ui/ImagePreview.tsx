@@ -13,6 +13,7 @@ import { logger } from "../logger.js";
 interface ImagePreviewProps {
   source: string;
   height?: number;
+  maxWidth?: number;
   clipped?: boolean;
   forceHalfBlock?: boolean;
 }
@@ -238,6 +239,7 @@ export function containImageInCells(
 export function ImagePreview({
   source,
   height = IMAGE_PREVIEW_HEIGHT,
+  maxWidth = IMAGE_PREVIEW_WIDTH,
   clipped = false,
   forceHalfBlock = false,
 }: ImagePreviewProps) {
@@ -245,11 +247,14 @@ export function ImagePreview({
   const failed = preparedImageCache.has(source) && preparedImage === null;
   const terminalInfo = useTerminalInfo();
   const maxHeight = Math.max(Math.min(height, IMAGE_PREVIEW_HEIGHT), 1);
+  const previewMaxWidth = Math.max(Math.min(maxWidth, IMAGE_PREVIEW_WIDTH), 1);
   const naturalSize = preparedImage
     ? containImageInCells(
         preparedImage.dimensions,
         terminalInfo.cellWidth,
-        terminalInfo.cellHeight
+        terminalInfo.cellHeight,
+        previewMaxWidth,
+        maxHeight
       )
     : null;
   const previewSize = preparedImage && naturalSize && naturalSize.height > maxHeight
@@ -257,14 +262,14 @@ export function ImagePreview({
         preparedImage.dimensions,
         terminalInfo.cellWidth,
         terminalInfo.cellHeight,
-        IMAGE_PREVIEW_WIDTH,
+        previewMaxWidth,
         maxHeight
       )
     : naturalSize;
 
   return (
     <Box
-      width={IMAGE_PREVIEW_WIDTH}
+      width={previewMaxWidth}
       height={maxHeight}
       overflow="hidden"
     >
