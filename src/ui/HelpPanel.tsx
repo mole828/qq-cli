@@ -15,6 +15,7 @@ export const HELP_ROWS = [
   ["↑ / ↓", "Move through message history one entry at a time"],
   ["PageUp / PageDown", "Move through message history by half a page"],
   ["End", "Jump to the latest message"],
+  ["Cmd+←/→ · Ctrl+A/E", "Jump to the start or end of the composer"],
   ["Esc", "Close panel or clear input"],
   ["Cmd+V / Ctrl+V", "Attach image from the macOS clipboard"],
   ["Backspace", "Remove the last attachment when input is empty"],

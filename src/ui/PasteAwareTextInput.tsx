@@ -58,12 +58,28 @@ export function PasteAwareTextInput({
         onSubmit?.(value);
         return;
       }
+      if (key.ctrl && input.toLowerCase() === "a") {
+        setCursorOffset(0);
+        return;
+      }
+      if (key.ctrl && input.toLowerCase() === "e") {
+        setCursorOffset(value.length);
+        return;
+      }
       if (key.leftArrow) {
-        setCursorOffset((current) => Math.max(current - 1, 0));
+        if (key.meta || key.super) {
+          setCursorOffset(0);
+        } else {
+          setCursorOffset((current) => Math.max(current - 1, 0));
+        }
         return;
       }
       if (key.rightArrow) {
-        setCursorOffset((current) => Math.min(current + 1, value.length));
+        if (key.meta || key.super) {
+          setCursorOffset(value.length);
+        } else {
+          setCursorOffset((current) => Math.min(current + 1, value.length));
+        }
         return;
       }
       if (key.home) {
