@@ -17,6 +17,7 @@ import {
   parseImageMode,
 } from "./config.js";
 import { Composer } from "./ui/Composer.js";
+import { ChatPage } from "./ui/ChatPage.js";
 import { EmptyState } from "./ui/EmptyState.js";
 import { HelpPanel } from "./ui/HelpPanel.js";
 import { ForwardPanel, getForwardPanelMaxOffset } from "./ui/ForwardPanel.js";
@@ -872,6 +873,30 @@ export function App() {
     messageScrollOffset,
     maxMessageScrollOffset
   );
+
+  if (!forwardView && !helpMode && !modalMode && activeSession) {
+    return (
+      <ChatPage
+        state={{
+          session: activeSession,
+          messages: activeMessages,
+          selfId,
+          scrollOffset: messageScrollOffset,
+          imageMode,
+          messageGap,
+          connected,
+          statusMsg,
+          inputText,
+          attachments,
+          unreadTotal,
+          moveCursorToEndKey,
+        }}
+        onInputChange={handleInputChange}
+        onSubmit={handleSubmit}
+        onPaste={handlePaste}
+      />
+    );
+  }
 
   return (
     <Box flexDirection="column">

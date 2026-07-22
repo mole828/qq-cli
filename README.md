@@ -86,6 +86,25 @@ QQ_CLI_IMAGE_MODE=inline npm run dev
 
 消息之间默认不留空行。需要恢复更松散的间距时，可以设置 `QQ_CLI_MESSAGE_GAP=1`。
 
+## 本地历史复现
+
+可以把指定群的当前聊天记录和图片保存到 `.local/history/`，用于稳定复现渲染问题：
+
+```bash
+npm run history:capture -- --group uye群 --count 50 --output .local/history/uye-group.json
+```
+
+抓取命令会读取项目根目录的 `.env`，也支持已有的 `ONEBOT_WS_URL` 和 `ONEBOT_ACCESS_TOKEN` 环境变量。记录文件和图片资源位于已忽略的 `.local/`，不会提交聊天内容。
+
+使用同一个聊天页组件直接渲染记录，不会连接 OneBot：
+
+```bash
+npm run dev -- --history .local/history/uye-group.json --offset 0 --image-mode inline
+npm run dev -- --history .local/history/uye-group.json --offset 12 --image-mode inline
+```
+
+静态模式支持 `↑`、`↓`、`PageUp`、`PageDown`、`End` 和 `Shift+Tab`，按 `Esc` 或 `q` 退出。还可以通过 `--message-gap <行数>` 固定消息间距。
+
 ## 使用 NapCat
 
 仓库里提供了一个基础的 `napcat-docker-compose.yaml`：

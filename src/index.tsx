@@ -5,6 +5,9 @@ import {
   type TerminalInfo,
 } from "ink-picture";
 import { App } from "./App.js";
+import { getInitialImageMode, parseImageMode, parseMessageGap } from "./config.js";
+import { HistoryApp } from "./HistoryApp.js";
+import { readChatHistory } from "./history-file.js";
 
 interface TerminalInfoSample {
   info: TerminalInfo;
@@ -50,8 +53,36 @@ function ResponsivePictureProvider({ children }: { children: React.ReactNode }) 
   );
 }
 
+function getOption(name: string) {
+  const exactIndex = process.argv.indexOf(name);
+  if (exactIndex >= 0) return process.argv[exactIndex + 1];
+  const prefix = `${name}=`;
+  return process.argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
+}
+
+const historyPath = getOption("--history");
+const offsetValue = Number.parseInt(getOption("--offset") || "0", 10);
+const initialOffset = Number.isFinite(offsetValue) ? Math.max(offsetValue, 0) : 0;
+const imageModeArgument = getOption("--image-mode");
+const imageMode = imageModeArgument
+  ? parseImageMode(imageModeArgument)
+  : getInitialImageMode();
+const messageGap = parseMessageGap(
+  getOption("--message-gap") ?? process.env.QQ_CLI_MESSAGE_GAP
+);
+const history = historyPath ? await readChatHistory(historyPath) : null;
+
 render(
   <ResponsivePictureProvider>
-    <App />
+    {history ? (
+      <HistoryApp
+        history={history}
+        initialOffset={initialOffset}
+        initialImageMode={imageMode}
+        messageGap={messageGap}
+      />
+    ) : (
+      <App />
+    )}
   </ResponsivePictureProvider>
 );
