@@ -10,7 +10,7 @@ interface SessionPickerProps {
   scrollOffset: number;
   maxHeight: number;
   unreadCounts: Record<number, number>;
-  lastMessageByContact: Map<number, ChatMessage>;
+  lastMessageByContact: Map<string, ChatMessage>;
   selfId: number;
   termWidth: number;
   unreadTotal: number;
@@ -27,14 +27,16 @@ function ContactLine({
   contact: Contact;
   highlighted: boolean;
   unreadCounts: Record<number, number>;
-  lastMessageByContact: Map<number, ChatMessage>;
+  lastMessageByContact: Map<string, ChatMessage>;
   selfId: number;
   termWidth: number;
 }) {
   const marker = highlighted ? "›" : " ";
   const icon = contact.type === "group" ? "#" : "@";
   const unread = unreadCounts[contact.id] || 0;
-  const lastMessage = lastMessageByContact.get(contact.id);
+  const lastMessage = lastMessageByContact.get(
+    `${contact.type}:${contact.id}`
+  );
   const latest = lastMessage
     ? `${lastMessage.senderId === selfId ? "you" : lastMessage.senderName}: ${compactMessage(lastMessage)}`
     : contact.type === "group"

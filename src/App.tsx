@@ -39,6 +39,16 @@ function sessionKey(contact: Contact) {
   return `${contact.type}:${contact.id}`;
 }
 
+function contactSearchRank(contact: Contact, query: string) {
+  const name = contact.name.toLowerCase();
+  const id = String(contact.id);
+  if (id === query) return 0;
+  if (name.startsWith(query)) return 1;
+  if (name.includes(query)) return 2;
+  if (id.includes(query)) return 3;
+  return null;
+}
+
 function messageKey(message: ChatMessage) {
   return `${message.chatType}:${message.contactId}:${message.id}`;
 }
@@ -62,6 +72,8 @@ const COMPLETABLE_COMMANDS = [
   "/exit",
   "/quit",
 ] as const;
+
+const RECENT_CONTACT_LIMIT = 100;
 
 export function App() {
   const { columns, rows } = useWindowSize();
@@ -91,6 +103,9 @@ export function App() {
   const [selfId, setSelfId] = useState(0);
   const [nickname, setNickname] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [recentActivityAt, setRecentActivityAt] = useState<
+    Record<string, number>
+  >({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageScrollOffset, setMessageScrollOffset] = useState(0);
   const [activeSession, setActiveSession] = useState<Contact | null>(null);
@@ -121,7 +136,7 @@ export function App() {
   // ---- scrollable picker modal ----
   const [modalMode, setModalMode] = useState(false);
   const [modalBaseList, setModalBaseList] = useState<Contact[]>([]);
-  const [modalHighlight, setModalHighlight] = useState(0);
+  const [modalHighlightKey, setModalHighlightKey] = useState<string | null>(null);
   const [modalScrollOff, setModalScrollOff] = useState(0);
 
   useEffect(() => {
@@ -223,6 +238,23 @@ export function App() {
       const client = qqRef.current;
       if (!client) return;
 
+      void client
+        .getRecentContactActivity(RECENT_CONTACT_LIMIT)
+        .then((recentActivity) => {
+          setRecentActivityAt(
+            Object.fromEntries(
+              recentActivity.map(({ contact, timestamp }) => [
+                sessionKey(contact),
+                timestamp,
+              ])
+            )
+          );
+        })
+        .catch(() => {
+          // Recent activity is an optional NapCat extension. The session index
+          // remains usable with its stable source order when it is unavailable.
+        });
+
       try {
         const info = await client.getLoginInfo();
         if (!info.user_id) return;
@@ -245,48 +277,60 @@ export function App() {
   const filterText = inputText.trim().toLowerCase();
 
   const lastMessageByContact = useMemo(() => {
-    const latest = new Map<number, ChatMessage>();
+    const latest = new Map<string, ChatMessage>();
     for (const msg of messages) {
-      const prev = latest.get(msg.contactId);
+      const key = `${msg.chatType === "group" ? "group" : "friend"}:${msg.contactId}`;
+      const prev = latest.get(key);
       if (!prev || msg.timestamp > prev.timestamp) {
-        latest.set(msg.contactId, msg);
+        latest.set(key, msg);
       }
     }
     return latest;
   }, [messages]);
 
-  const orderContacts = (list: Contact[]) =>
+  const snapshotContacts = (list: Contact[]) =>
     [...list].sort((a, b) => {
-      const unreadDiff = (unreadCounts[b.id] || 0) - (unreadCounts[a.id] || 0);
-      if (unreadDiff !== 0) return unreadDiff;
-
-      const aActive = activeSession?.id === a.id ? 1 : 0;
-      const bActive = activeSession?.id === b.id ? 1 : 0;
-      if (aActive !== bActive) return bActive - aActive;
-
+      const aKey = sessionKey(a);
+      const bKey = sessionKey(b);
       return (
-        (lastMessageByContact.get(b.id)?.timestamp || 0) -
-        (lastMessageByContact.get(a.id)?.timestamp || 0)
+        Math.max(
+          recentActivityAt[bKey] || 0,
+          lastMessageByContact.get(bKey)?.timestamp || 0
+        ) -
+        Math.max(
+          recentActivityAt[aKey] || 0,
+          lastMessageByContact.get(aKey)?.timestamp || 0
+        )
       );
     });
 
   const filteredContacts = useMemo(() => {
     if (!modalMode) return [] as Contact[];
     const f = filterText;
-    const matched = !f ? modalBaseList : modalBaseList.filter(
-      (c) =>
-        c.name.toLowerCase().includes(f) ||
-        String(c.id).includes(f)
-    );
-    return orderContacts(matched);
+    if (!f) return modalBaseList;
+    return modalBaseList
+      .map((contact) => ({
+        contact,
+        rank: contactSearchRank(contact, f),
+      }))
+      .filter(
+        (item): item is { contact: Contact; rank: number } =>
+          item.rank !== null
+      )
+      .sort((a, b) => a.rank - b.rank)
+      .map((item) => item.contact);
   }, [
-    activeSession?.id,
     filterText,
-    lastMessageByContact,
     modalBaseList,
     modalMode,
-    unreadCounts,
   ]);
+
+  const modalHighlight = Math.max(
+    filteredContacts.findIndex(
+      (contact) => sessionKey(contact) === modalHighlightKey
+    ),
+    0
+  );
 
   const maxModalHeight = Math.max(
     bodyRows - 5,
@@ -296,9 +340,11 @@ export function App() {
   // reset highlight & scroll when filter changes
   useEffect(() => {
     if (!modalMode) return;
-    setModalHighlight(0);
+    setModalHighlightKey(
+      filteredContacts[0] ? sessionKey(filteredContacts[0]) : null
+    );
     setModalScrollOff(0);
-  }, [modalMode, filterText]);
+  }, [filteredContacts, modalMode]);
 
   // picker handleSubmit - Enter selects highlighted contact
   function handleSubmit(value: string) {
@@ -315,7 +361,7 @@ export function App() {
         return;
       }
       const idx = clamp(modalHighlight, 0, filteredContacts.length - 1);
-      handleSession(filteredContacts[idx].id);
+      handleSession(filteredContacts[idx]);
       closeModal();
       return;
     }
@@ -331,11 +377,12 @@ export function App() {
 
   // ---- modal helpers ----
   function openModal(baseList: Contact[], preFill: string) {
+    const snapshot = snapshotContacts(baseList);
     setHelpMode(false);
     setForwardView(null);
-    setModalBaseList(baseList);
+    setModalBaseList(snapshot);
     setModalMode(true);
-    setModalHighlight(0);
+    setModalHighlightKey(snapshot[0] ? sessionKey(snapshot[0]) : null);
     setModalScrollOff(0);
     setInputText(preFill);
   }
@@ -343,7 +390,7 @@ export function App() {
   function closeModal() {
     setModalMode(false);
     setModalBaseList([]);
-    setModalHighlight(0);
+    setModalHighlightKey(null);
     setModalScrollOff(0);
     setInputText("");
   }
@@ -475,53 +522,53 @@ export function App() {
         return;
       }
       if (key.upArrow) {
-        setModalHighlight((h) => {
-          const next = h > 0 ? h - 1 : total - 1;
-          setModalScrollOff((prevScroll) =>
-            next < prevScroll ? next : prevScroll
-          );
-          return next;
-        });
+        const next = modalHighlight > 0 ? modalHighlight - 1 : total - 1;
+        setModalHighlightKey(sessionKey(filteredContacts[next]));
+        setModalScrollOff((prevScroll) =>
+          next < prevScroll ? next : prevScroll
+        );
         return;
       }
       if (key.downArrow) {
-        setModalHighlight((h) => {
-          const next = h < total - 1 ? h + 1 : 0;
-          setModalScrollOff((prevScroll) =>
-            next >= prevScroll + maxModalHeight
-              ? next - maxModalHeight + 1
-              : prevScroll
-          );
-          return next;
-        });
+        const next = modalHighlight < total - 1 ? modalHighlight + 1 : 0;
+        setModalHighlightKey(sessionKey(filteredContacts[next]));
+        setModalScrollOff((prevScroll) =>
+          next >= prevScroll + maxModalHeight
+            ? next - maxModalHeight + 1
+            : prevScroll
+        );
         return;
       }
       if (key.pageDown) {
-        setModalHighlight((h) => {
-          const next = clamp(h + maxModalHeight, 0, total - 1);
-          setModalScrollOff(() =>
-            clamp(
-              next - Math.floor(maxModalHeight / 2),
-              0,
-              Math.max(total - maxModalHeight, 0)
-            )
-          );
-          return next;
-        });
+        const next = clamp(
+          modalHighlight + maxModalHeight,
+          0,
+          total - 1
+        );
+        setModalHighlightKey(sessionKey(filteredContacts[next]));
+        setModalScrollOff(
+          clamp(
+            next - Math.floor(maxModalHeight / 2),
+            0,
+            Math.max(total - maxModalHeight, 0)
+          )
+        );
         return;
       }
       if (key.pageUp) {
-        setModalHighlight((h) => {
-          const next = clamp(h - maxModalHeight, 0, total - 1);
-          setModalScrollOff(() =>
-            clamp(
-              next - Math.floor(maxModalHeight / 2),
-              0,
-              Math.max(total - maxModalHeight, 0)
-            )
-          );
-          return next;
-        });
+        const next = clamp(
+          modalHighlight - maxModalHeight,
+          0,
+          total - 1
+        );
+        setModalHighlightKey(sessionKey(filteredContacts[next]));
+        setModalScrollOff(
+          clamp(
+            next - Math.floor(maxModalHeight / 2),
+            0,
+            Math.max(total - maxModalHeight, 0)
+          )
+        );
         return;
       }
       return;
@@ -631,9 +678,8 @@ export function App() {
 
   });
 
-  function handleSession(id: number) {
-    const contact = contacts.find((c) => c.id === id);
-    if (contact) {
+  function handleSession(contact: Contact) {
+    if (contacts.some((item) => sessionKey(item) === sessionKey(contact))) {
       const generation = sessionGenerationRef.current + 1;
       sessionGenerationRef.current = generation;
       messageScrollOffsetRef.current = 0;
@@ -711,7 +757,7 @@ export function App() {
             String(c.id).includes(q)
         );
         if (matched.length === 1) {
-          handleSession(matched[0].id);
+          handleSession(matched[0]);
           setInputText("");
         } else {
           openModal(contacts, args);

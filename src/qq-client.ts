@@ -427,6 +427,57 @@ export class QQClient {
     return [];
   }
 
+  async getRecentContactActivity(
+    count: number
+  ): Promise<Array<{ contact: Contact; timestamp: number }>> {
+    const res = await this.callApi("get_recent_contact", { count });
+    if (res.status !== "ok" || !Array.isArray(res.data)) {
+      logger.warn("Recent contact activity unavailable", {
+        retcode: res.retcode,
+      });
+      return [];
+    }
+
+    const activity = (res.data as Array<{
+      peerUin?: string | number;
+      msgTime?: string | number;
+      chatType?: number;
+      peerName?: string;
+    }>)
+      .map((item) => {
+        const id = Number(item.peerUin);
+        const timestamp = Number(item.msgTime) * 1000;
+        const type =
+          item.chatType === 2
+            ? "group" as const
+            : item.chatType === 1
+            ? "friend" as const
+            : null;
+        if (!type || !Number.isFinite(id) || !Number.isFinite(timestamp)) {
+          return null;
+        }
+        return {
+          contact: {
+            id,
+            name: item.peerName || String(id),
+            type,
+          },
+          timestamp,
+        };
+      })
+      .filter(
+        (
+          item
+        ): item is {
+          contact: Contact;
+          timestamp: number;
+        } => item !== null
+      );
+
+    logger.info("Recent contact activity loaded", { count: activity.length });
+    return activity;
+  }
+
   async getLoginInfo(): Promise<{ user_id: number; nickname: string }> {
     const res = await this.callApi("get_login_info");
     if (res.status === "ok") {
