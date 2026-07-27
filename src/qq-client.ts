@@ -183,7 +183,7 @@ export class QQClient {
       contactId,
       chatType: event.message_type,
       senderId,
-      senderName: event.sender.nickname || String(senderId),
+      senderName: event.sender.card || event.sender.nickname || String(senderId),
       content: textContent,
       timestamp: event.time * 1000,
       isMine: isSent || senderId === this.selfId,
