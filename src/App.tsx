@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { Box, useInput, useWindowSize, useApp } from "ink";
 import { useTerminalInfo } from "ink-picture";
 import type { Contact, ChatMessage, MessageSegment, ForwardNode } from "./types.js";
@@ -175,6 +175,10 @@ export function App() {
     for (const attachment of attachmentsRef.current) {
       void removeAttachment(attachment);
     }
+  }, []);
+
+  const resolveImageSource = useCallback((file: string) => {
+    return qqRef.current?.getImageUrl(file) ?? Promise.resolve(null);
   }, []);
 
   // ---- WebSocket connection ----
@@ -940,6 +944,7 @@ export function App() {
         onInputChange={handleInputChange}
         onSubmit={handleSubmit}
         onPaste={handlePaste}
+        resolveImageSource={resolveImageSource}
       />
     );
   }
@@ -963,6 +968,7 @@ export function App() {
             cellWidth={terminalInfo.cellWidth}
             cellHeight={terminalInfo.cellHeight}
             imageMode={imageMode}
+            resolveImageSource={resolveImageSource}
           />
         ) : helpMode ? (
           <HelpPanel />
@@ -996,6 +1002,7 @@ export function App() {
             imageMode={imageMode}
             scrollOffset={effectiveMessageScrollOffset}
             messageGap={messageGap}
+            resolveImageSource={resolveImageSource}
           />
         ) : null}
       </Box>

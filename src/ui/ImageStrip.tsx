@@ -1,21 +1,24 @@
 import React from "react";
 import { Box } from "ink";
+import type { ImageReference, ImageSourceResolver } from "../types.js";
 import { IMAGE_PREVIEW_WIDTH, ImagePreview } from "./ImagePreview.js";
 
 const IMAGE_GAP = 1;
 
 interface ImageStripProps {
-  sources: string[];
+  references: ImageReference[];
   width: number;
   height: number;
   clipped?: boolean;
+  resolveSource?: ImageSourceResolver;
 }
 
 export function ImageStrip({
-  sources,
+  references,
   width,
   height,
   clipped = false,
+  resolveSource,
 }: ImageStripProps) {
   const availableWidth = Math.max(width, 1);
   const slotWidth = Math.min(IMAGE_PREVIEW_WIDTH, availableWidth);
@@ -23,7 +26,7 @@ export function ImageStrip({
     Math.floor((availableWidth + IMAGE_GAP) / (slotWidth + IMAGE_GAP)),
     1
   );
-  const visibleSources = sources.slice(0, visibleCount);
+  const visibleReferences = references.slice(0, visibleCount);
 
   return (
     <Box
@@ -32,10 +35,12 @@ export function ImageStrip({
       overflow="hidden"
     >
       <Box flexDirection="row" columnGap={IMAGE_GAP} flexShrink={0}>
-        {visibleSources.map((source, index) => (
+        {visibleReferences.map((reference, index) => (
           <ImagePreview
-            key={`${source}-${index}`}
-            source={source}
+            key={`${reference.source}-${index}`}
+            source={reference.source}
+            file={reference.file}
+            resolveSource={resolveSource}
             height={height}
             maxWidth={slotWidth}
             forceHalfBlock={clipped}

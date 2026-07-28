@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { ImageMode } from "../config.js";
-import { compactMessage, getImageSources } from "../message-format.js";
+import { compactMessage, getImageReferences } from "../message-format.js";
 import { linkifyUrls } from "../terminal-text.js";
 import type { ChatMessage } from "../types.js";
 import { ImageStrip } from "./ImageStrip.js";
@@ -42,8 +42,8 @@ export function TranscriptEntryView({
   const sender = isMine ? "you" : message.senderName || String(message.senderId);
   const content = compactMessage(message, { imageMode, terminalLinks: true }) || "(empty)";
   const linkedContent = linkifyUrls(content);
-  const imageSources = renderInlineImage && imageMode === "inline"
-    ? getImageSources(message)
+  const imageReferences = renderInlineImage && imageMode === "inline"
+    ? getImageReferences(message)
     : [];
   const stripWidth = Math.max(termWidth - 4, 1);
 
@@ -61,9 +61,9 @@ export function TranscriptEntryView({
           <Text bold>› </Text>
           {linkedContent}
         </Text>
-        {imageSources.length > 0 && (
+        {imageReferences.length > 0 && (
           <ImageStrip
-            sources={imageSources}
+            references={imageReferences}
             width={stripWidth}
             height={imagePreviewHeight ?? 10}
           />
@@ -79,9 +79,9 @@ export function TranscriptEntryView({
         <Text dimColor> · {formatTime(message.timestamp)}</Text>
       </Text>
       <Text wrap="wrap">{linkedContent}</Text>
-      {imageSources.length > 0 && (
+      {imageReferences.length > 0 && (
         <ImageStrip
-          sources={imageSources}
+          references={imageReferences}
           width={stripWidth}
           height={imagePreviewHeight ?? 10}
         />

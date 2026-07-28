@@ -39,6 +39,13 @@ export interface MessageSegment {
   data: Record<string, unknown>;
 }
 
+export interface ImageReference {
+  source: string;
+  file?: string;
+}
+
+export type ImageSourceResolver = (file: string) => Promise<string | null>;
+
 export interface ForwardNode {
   senderId?: string;
   senderName: string;

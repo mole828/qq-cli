@@ -3,7 +3,7 @@ import { Box, useWindowSize } from "ink";
 import { useTerminalInfo } from "ink-picture";
 import type { ImageAttachment } from "../clipboard-image.js";
 import type { ImageMode } from "../config.js";
-import type { ChatMessage, Contact } from "../types.js";
+import type { ChatMessage, Contact, ImageSourceResolver } from "../types.js";
 import { COMPOSER_ROWS, TERMINAL_GUTTER_ROWS } from "./layout.js";
 import { Composer } from "./Composer.js";
 import {
@@ -32,6 +32,7 @@ interface ChatPageProps {
   onInputChange: (value: string) => void;
   onSubmit: (value: string) => void;
   onPaste: (value: string) => boolean;
+  resolveImageSource?: ImageSourceResolver;
 }
 
 export function ChatPage({
@@ -39,6 +40,7 @@ export function ChatPage({
   onInputChange,
   onSubmit,
   onPaste,
+  resolveImageSource,
 }: ChatPageProps) {
   const { columns, rows } = useWindowSize();
   const terminalInfo = useTerminalInfo();
@@ -82,6 +84,7 @@ export function ChatPage({
             imageMode={state.imageMode}
             scrollOffset={effectiveOffset}
             messageGap={state.messageGap}
+            resolveImageSource={resolveImageSource}
           />
         ) : null}
       </Box>

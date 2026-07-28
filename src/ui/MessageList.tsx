@@ -1,5 +1,5 @@
 import React from "react";
-import type { ChatMessage, Contact } from "../types.js";
+import type { ChatMessage, Contact, ImageSourceResolver } from "../types.js";
 import type { ImageMode } from "../config.js";
 import { compactMessage, getImageSources } from "../message-format.js";
 import { wrapCells } from "../terminal-text.js";
@@ -46,6 +46,7 @@ interface MessageListProps {
   imageMode: ImageMode;
   scrollOffset: number;
   messageGap: number;
+  resolveImageSource?: ImageSourceResolver;
 }
 
 function getMessageRowCost(
@@ -226,6 +227,7 @@ export function MessageList({
   imageMode,
   messageGap,
   scrollOffset,
+  resolveImageSource,
 }: MessageListProps) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
   const replyLookup = buildReplyLookup(messages);
@@ -264,6 +266,7 @@ export function MessageList({
           visibleRows={visibleRows}
           clipped={clipped}
           replyLookup={replyLookup}
+          resolveImageSource={resolveImageSource}
         />
       ))}
     </>

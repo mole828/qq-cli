@@ -1,8 +1,8 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { ChatMessage, Contact } from "../types.js";
+import type { ChatMessage, Contact, ImageSourceResolver } from "../types.js";
 import type { ImageMode } from "../config.js";
-import { compactMessage, getImageSources } from "../message-format.js";
+import { compactMessage, getImageReferences } from "../message-format.js";
 import {
   linkifyUrls,
   singleLine,
@@ -34,6 +34,7 @@ interface MessageRowProps {
   visibleRows?: number;
   clipped?: boolean;
   replyLookup?: ReadonlyMap<string, ChatMessage>;
+  resolveImageSource?: ImageSourceResolver;
 }
 
 export function MessageRow({
@@ -49,6 +50,7 @@ export function MessageRow({
   visibleRows,
   clipped = false,
   replyLookup,
+  resolveImageSource,
 }: MessageRowProps) {
   const isMine = msg.senderId === selfId;
   const time = formatTime(msg.timestamp);
@@ -57,8 +59,8 @@ export function MessageRow({
   const rawContent = compactMessage(msg, { imageMode, replyLookup });
   const linkedContent =
     compactMessage(msg, { imageMode, terminalLinks: true, replyLookup }) || "(empty)";
-  const imageSources =
-    imageMode === "inline" && renderInlineImage ? getImageSources(msg) : [];
+  const imageReferences =
+    imageMode === "inline" && renderInlineImage ? getImageReferences(msg) : [];
 
   if (isMine) {
     const promptBg = "#3a3a3a";
@@ -99,13 +101,14 @@ export function MessageRow({
             </Text>
           ))}
         </Box>
-        {imageSources.length > 0 && (
+        {imageReferences.length > 0 && (
           <Box paddingLeft={4} height={imagePreviewHeight} overflow="hidden">
             <ImageStrip
-              sources={imageSources}
+              references={imageReferences}
               width={Math.max(rowWidth - 4, 1)}
               height={imagePreviewHeight}
               clipped={clipped}
+              resolveSource={resolveImageSource}
             />
           </Box>
         )}
@@ -151,13 +154,14 @@ export function MessageRow({
           </Text>
         ))}
       </Box>
-      {imageSources.length > 0 && (
+      {imageReferences.length > 0 && (
         <Box paddingLeft={2} height={imagePreviewHeight} overflow="hidden">
           <ImageStrip
-            sources={imageSources}
+            references={imageReferences}
             width={Math.max(termWidth - 6, 1)}
             height={imagePreviewHeight}
             clipped={clipped}
+            resolveSource={resolveImageSource}
           />
         </Box>
       )}

@@ -9,6 +9,7 @@ import { Box, Text } from "ink";
 import Image, { useTerminalInfo } from "ink-picture";
 import { Jimp } from "jimp";
 import { logger } from "../logger.js";
+import type { ImageSourceResolver } from "../types.js";
 
 interface ImagePreviewProps {
   source: string;
@@ -16,11 +17,14 @@ interface ImagePreviewProps {
   maxWidth?: number;
   clipped?: boolean;
   forceHalfBlock?: boolean;
+  file?: string;
+  resolveSource?: ImageSourceResolver;
 }
 
 export const IMAGE_PREVIEW_WIDTH = 28;
 export const IMAGE_PREVIEW_HEIGHT = 10;
 const IMAGE_REQUEST_TIMEOUT_MS = 15_000;
+const IMAGE_RETRY_DELAY_MS = 30_000;
 
 interface ImageDimensions {
   width: number;
@@ -34,6 +38,7 @@ interface PreparedImage {
 
 const imageMetadataCache = new Map<string, Promise<PreparedImage | null>>();
 const preparedImageCache = new Map<string, PreparedImage | null>();
+const imageFailureTime = new Map<string, number>();
 const metadataListeners = new Set<() => void>();
 let metadataVersion = 0;
 let imageTempDirPromise: Promise<string> | null = null;
@@ -51,6 +56,8 @@ function getImageTempDir() {
 
 function publishPreparedImage(source: string, image: PreparedImage | null) {
   preparedImageCache.set(source, image);
+  if (image) imageFailureTime.delete(source);
+  else imageFailureTime.set(source, Date.now());
   metadataVersion += 1;
   for (const listener of metadataListeners) listener();
 }
@@ -68,10 +75,14 @@ export function useImageMetadataVersion() {
   );
 }
 
-function prepareImage(source: string) {
+function prepareImage(
+  source: string,
+  file?: string,
+  resolveSource?: ImageSourceResolver
+) {
   let pending = imageMetadataCache.get(source);
   if (!pending) {
-    pending = loadImageSource(source)
+    pending = loadImageWithFallback(source, file, resolveSource)
       .then(async (loadedSource) => ({
         image: await Jimp.read(loadedSource),
         renderSource: await cacheRenderSource(source, loadedSource),
@@ -106,10 +117,28 @@ function prepareImage(source: string) {
       const oldestSource = imageMetadataCache.keys().next().value!;
       imageMetadataCache.delete(oldestSource);
       preparedImageCache.delete(oldestSource);
+      imageFailureTime.delete(oldestSource);
     }
   }
 
   return pending;
+}
+
+async function loadImageWithFallback(
+  source: string,
+  file?: string,
+  resolveSource?: ImageSourceResolver
+) {
+  try {
+    return await loadImageSource(source);
+  } catch (initialError) {
+    if (!file || !resolveSource) throw initialError;
+
+    const refreshedSource = await resolveSource(file);
+    if (!refreshedSource || refreshedSource === source) throw initialError;
+    logger.info("Retrying image preview with refreshed URL", { file });
+    return loadImageSource(refreshedSource);
+  }
 }
 
 async function cacheRenderSource(source: string, loadedSource: string | Buffer) {
@@ -168,12 +197,30 @@ function normalizeImageBytes(bytes: Buffer) {
   return bytes;
 }
 
-function usePreparedImage(source: string) {
+function usePreparedImage(
+  source: string,
+  file?: string,
+  resolveSource?: ImageSourceResolver
+) {
   const version = useImageMetadataVersion();
 
   useEffect(() => {
-    if (!preparedImageCache.has(source)) void prepareImage(source);
-  }, [source, version]);
+    if (!preparedImageCache.has(source)) {
+      void prepareImage(source, file, resolveSource);
+      return;
+    }
+
+    const failedAt = imageFailureTime.get(source);
+    if (failedAt === undefined) return;
+    const retryIn = Math.max(IMAGE_RETRY_DELAY_MS - (Date.now() - failedAt), 0);
+    const timeout = setTimeout(() => {
+      imageMetadataCache.delete(source);
+      preparedImageCache.delete(source);
+      imageFailureTime.delete(source);
+      void prepareImage(source, file, resolveSource);
+    }, retryIn);
+    return () => clearTimeout(timeout);
+  }, [source, file, resolveSource, version]);
 
   return preparedImageCache.get(source) ?? null;
 }
@@ -242,8 +289,10 @@ export function ImagePreview({
   maxWidth = IMAGE_PREVIEW_WIDTH,
   clipped = false,
   forceHalfBlock = false,
+  file,
+  resolveSource,
 }: ImagePreviewProps) {
-  const preparedImage = usePreparedImage(source);
+  const preparedImage = usePreparedImage(source, file, resolveSource);
   const failed = preparedImageCache.has(source) && preparedImage === null;
   const terminalInfo = useTerminalInfo();
   const maxHeight = Math.max(Math.min(height, IMAGE_PREVIEW_HEIGHT), 1);

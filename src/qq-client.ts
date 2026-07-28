@@ -368,6 +368,17 @@ export class QQClient {
     return nodes;
   }
 
+  async getImageUrl(file: string): Promise<string | null> {
+    const res = await this.callApi("get_image", { file });
+    const data = res.data as { url?: unknown } | null;
+    if (res.status === "ok" && typeof data?.url === "string") {
+      logger.info("Image URL refreshed", { file });
+      return data.url;
+    }
+    logger.warn("Failed to refresh image URL", { file, retcode: res.retcode });
+    return null;
+  }
+
   private callApi(
     action: string,
     params?: Record<string, unknown>

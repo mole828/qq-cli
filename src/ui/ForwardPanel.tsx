@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { ImageMode } from "../config.js";
-import type { ChatMessage, ForwardNode } from "../types.js";
+import type { ChatMessage, ForwardNode, ImageSourceResolver } from "../types.js";
 import {
   getMaxMessageScrollOffset,
   MessageList,
@@ -17,6 +17,7 @@ interface ForwardPanelProps {
   cellWidth: number;
   cellHeight: number;
   imageMode: ImageMode;
+  resolveImageSource?: ImageSourceResolver;
 }
 
 const FORWARD_HEADER_ROWS = 3;
@@ -50,6 +51,7 @@ export function ForwardPanel({
   cellWidth,
   cellHeight,
   imageMode,
+  resolveImageSource,
 }: ForwardPanelProps) {
   const messageRows = Math.max(bodyRows - FORWARD_HEADER_ROWS, 1);
   const messages = forwardNodesToMessages(forwardId, nodes);
@@ -85,6 +87,7 @@ export function ForwardPanel({
             imageMode={imageMode}
             scrollOffset={scrollOffset}
             messageGap={FORWARD_MESSAGE_GAP}
+            resolveImageSource={resolveImageSource}
           />
         </Box>
       )}

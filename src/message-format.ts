@@ -1,4 +1,4 @@
-import type { ChatMessage } from "./types.js";
+import type { ChatMessage, ImageReference } from "./types.js";
 import type { ImageMode } from "./config.js";
 import { isWebUrl, terminalLink } from "./terminal-text.js";
 
@@ -46,25 +46,41 @@ export function getImageSource(data: Record<string, string>) {
   return decodeCQValue(decodeCQValue(source));
 }
 
-export function getImageSources(msg: ChatMessage) {
-  const sources: string[] = [];
+export function getImageReferences(msg: ChatMessage) {
+  const references: ImageReference[] = [];
 
   if (msg.segments?.length) {
     for (const seg of msg.segments) {
       if (seg.type !== "image") continue;
-      const source = getImageSource(stringAttrs(seg.data));
-      if (source) sources.push(source);
+      const data = stringAttrs(seg.data);
+      const source = getImageSource(data);
+      if (source) {
+        references.push({
+          source,
+          ...(data.file ? { file: data.file } : {}),
+        });
+      }
     }
 
-    if (sources.length > 0) return sources;
+    if (references.length > 0) return references;
   }
 
   for (const match of msg.content.matchAll(/\[CQ:image((?:,[^\]]*)?)\]/g)) {
-    const source = getImageSource(parseCQAttrs(match[1]));
-    if (source) sources.push(source);
+    const data = parseCQAttrs(match[1]);
+    const source = getImageSource(data);
+    if (source) {
+      references.push({
+        source,
+        ...(data.file ? { file: data.file } : {}),
+      });
+    }
   }
 
-  return sources;
+  return references;
+}
+
+export function getImageSources(msg: ChatMessage) {
+  return getImageReferences(msg).map(({ source }) => source);
 }
 
 export function compactCQ(raw: string, options?: CompactOptions): string {
