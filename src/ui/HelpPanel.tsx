@@ -7,6 +7,7 @@ export const HELP_ROWS = [
   ["/groups [query]", "Search channel sessions"],
   ["/friends [query]", "Search direct sessions"],
   ["/images off|inline", "Set image display mode"],
+  ["/faces [refresh]", "Probe and browse custom faces when supported"],
   ["/forward <message-id>", "Inspect a merged forward message"],
   ["/reply <msgId>", "Set the current session's reply target"],
   ["/reload", "Reload account info and session index"],

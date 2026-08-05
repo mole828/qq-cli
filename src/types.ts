@@ -39,6 +39,12 @@ export interface MessageSegment {
   data: Record<string, unknown>;
 }
 
+export interface StickerItem {
+  id: string;
+  file: string;
+  source: "custom";
+}
+
 export interface ImageReference {
   source: string;
   file?: string;

@@ -287,7 +287,7 @@ export class QQClient {
     chatType: "private" | "group",
     targetId: number,
     content: string | MessageSegment[]
-  ): Promise<number | null> {
+  ): Promise<number | string | null> {
     const action =
       chatType === "private" ? "send_private_msg" : "send_group_msg";
     const params: Record<string, unknown> = {
@@ -301,13 +301,61 @@ export class QQClient {
     }
 
     const res = await this.callApi(action, params);
-    if (res.status === "ok" && typeof (res.data as Record<string, unknown>)?.message_id === "number") {
-      const id = (res.data as Record<string, number>).message_id;
+    const rawId =
+      res.data && typeof res.data === "object"
+        ? (res.data as Record<string, unknown>).message_id
+        : undefined;
+    if (
+      res.status === "ok" &&
+      ((typeof rawId === "number" && Number.isFinite(rawId)) ||
+        (typeof rawId === "string" && rawId.length > 0))
+    ) {
+      const id = rawId as number | string;
       logger.info("Message sent", { message_id: id, type: chatType, target: targetId });
       return id;
     }
     logger.warn("Send message failed", { type: chatType, target: targetId, retcode: res.retcode });
     return null;
+  }
+
+  async getCustomFaces(
+    count = 48,
+    action = "fetch_custom_face"
+  ): Promise<string[] | null> {
+    const res = await this.callApi(action, { count }, 2500);
+    if (res.status !== "ok") {
+      logger.info("Custom face capability unavailable", {
+        action,
+        retcode: res.retcode,
+      });
+      return null;
+    }
+
+    const raw = res.data;
+    const values = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object" && Array.isArray((raw as { faces?: unknown }).faces)
+        ? (raw as { faces: unknown[] }).faces
+        : raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data)
+          ? (raw as { data: unknown[] }).data
+          : null;
+    if (!values) {
+      logger.warn("Custom face response has an unexpected shape", {
+        action,
+        dataType: raw === null ? "null" : typeof raw,
+      });
+      return null;
+    }
+
+    const files = values.flatMap((item) => {
+      if (typeof item === "string") return [item];
+      if (!item || typeof item !== "object") return [];
+      const record = item as Record<string, unknown>;
+      const file = record.url ?? record.file ?? record.path;
+      return typeof file === "string" ? [file] : [];
+    });
+    logger.info("Custom faces loaded", { action, count: files.length });
+    return files;
   }
 
   async getForwardMessage(id: string): Promise<ForwardNode[] | null> {
@@ -381,13 +429,37 @@ export class QQClient {
 
   private callApi(
     action: string,
-    params?: Record<string, unknown>
+    params?: Record<string, unknown>,
+    timeoutMs = 10000
   ): Promise<OneBotApiResponse> {
     return new Promise((resolve) => {
       const echo = String(++this.echoCounter);
       const request: OneBotApiRequest = { action, params, echo };
 
-      this.pendingRequests.set(echo, resolve);
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const settle = (res: OneBotApiResponse) => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        if (this.pendingRequests.get(echo) === settle) {
+          this.pendingRequests.delete(echo);
+        }
+        resolve(res);
+      };
+
+      this.pendingRequests.set(echo, settle);
+      timer = setTimeout(() => {
+        if (this.pendingRequests.get(echo) !== settle) return;
+        this.pendingRequests.delete(echo);
+        logger.warn("API call timed out", { action, echo, timeoutMs });
+        resolve({
+          status: "failed",
+          retcode: -2,
+          data: null,
+          echo,
+        });
+      }, Math.max(timeoutMs, 1));
 
       if (this.ws?.readyState === WebSocket.OPEN) {
         const payload = JSON.stringify(request);
@@ -395,13 +467,12 @@ export class QQClient {
         this.ws.send(payload);
       } else {
         logger.warn("API call skipped (not connected)", { action });
-        resolve({
+        settle({
           status: "failed",
           retcode: -1,
           data: null,
           echo,
         });
-        this.pendingRequests.delete(echo);
       }
     });
   }

@@ -14,6 +14,7 @@ interface ComposerProps {
   onPaste: (value: string) => boolean;
   helpMode: boolean;
   modalMode: boolean;
+  facesMode?: boolean;
   forwardMode: boolean;
   activeSession: Contact | null;
   statusMsg: string;
@@ -33,6 +34,7 @@ export function Composer({
   onPaste,
   helpMode,
   modalMode,
+  facesMode = false,
   forwardMode,
   activeSession,
   statusMsg,
@@ -49,6 +51,8 @@ export function Composer({
   const composerBg = "#3a3a3a";
   const workspace = helpMode
     ? "~/help"
+    : facesMode
+    ? "~/faces"
     : forwardMode
     ? "~/forward"
     : modalMode
@@ -67,6 +71,8 @@ export function Composer({
     : "";
   const composerPlaceholder = helpMode
     ? "Esc to close help"
+    : facesMode
+    ? "Esc to close faces"
     : forwardMode
     ? "Esc to close forward"
     : modalMode
@@ -138,7 +144,7 @@ export function Composer({
               onChange={onChange}
               onSubmit={onSubmit}
               onPaste={onPaste}
-              focus={!helpMode && !forwardMode}
+              focus={!helpMode && !facesMode && !forwardMode}
               placeholder={composerPlaceholder}
               moveCursorToEndKey={moveCursorToEndKey}
             />

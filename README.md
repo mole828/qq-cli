@@ -21,6 +21,7 @@ qq-cli 的界面目标是做成一个低干扰的终端消息工作台，而不�
 - 通过 OneBot v11 WebSocket 连接 QQ 机器人端
 - 加载好友列表和群列表
 - 发送私聊和群聊文本消息
+- 通过 `/faces` 按需探测并浏览适配器提供的自定义表情
 - 接收并展示私聊、群聊消息
 - 使用 `/session` 临时会话面板切换聊天
 - 在会话面板中显示未读数和最近消息摘要
@@ -67,6 +68,12 @@ ONEBOT_WS_URL=ws://127.0.0.1:3001 npm run dev
 
 ```bash
 ONEBOT_ACCESS_TOKEN=your-token npm run dev
+```
+
+自定义表情默认尝试调用 NapCat 的 `fetch_custom_face` 扩展接口。连接到提供不同接口名的适配器时，可以覆盖 action：
+
+```bash
+QQ_CLI_CUSTOM_FACE_ACTION=your_custom_face_action npm run dev
 ```
 
 也可以组合使用：
@@ -144,6 +151,7 @@ NapCat 的配置、插件和 QQ 登录数据会分别保存在：
 | `/groups [关键词]` 或 `/g` | 搜索群聊 |
 | `/friends [关键词]` 或 `/f` | 搜索好友 |
 | `/images off\|inline` | 设置图片显示模式 |
+| `/faces [refresh]` | 探测并浏览适配器提供的自定义表情 |
 | `/reply <msgId>` | 设置当前会话的回复目标；消息头会显示可引用的 `#msgId` |
 | `/reload` | 重新加载登录信息、好友列表和群列表 |
 | `/help` | 打开帮助面板 |

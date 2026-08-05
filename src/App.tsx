@@ -7,6 +7,7 @@ import type {
   MessageSegment,
   ForwardNode,
   ReplyTarget,
+  StickerItem,
 } from "./types.js";
 import { QQClient } from "./qq-client.js";
 import {
@@ -30,6 +31,11 @@ import { HelpPanel } from "./ui/HelpPanel.js";
 import { ForwardPanel, getForwardPanelMaxOffset } from "./ui/ForwardPanel.js";
 import { COMPOSER_ROWS, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
 import { SessionPicker } from "./ui/SessionPicker.js";
+import { FacePanel, getFacePanelLayout } from "./ui/FacePanel.js";
+import {
+  CustomFaceProvider,
+  type StickerCapability,
+} from "./sticker-provider.js";
 import {
   getMaxMessageScrollOffset,
   getMessageScrollRows,
@@ -73,6 +79,8 @@ const COMPLETABLE_COMMANDS = [
   "/groups",
   "/friends",
   "/images",
+  "/faces",
+  "/stickers",
   "/forward",
   "/reply",
   "/reload",
@@ -106,6 +114,8 @@ export function App() {
   const messageScrollOffsetRef = useRef(0);
   const attachmentsRef = useRef<ImageAttachment[]>([]);
   const completionRef = useRef<{ prefix: string; index: number } | null>(null);
+  const faceRequestRef = useRef(0);
+  const customFaceProviderRef = useRef(new CustomFaceProvider());
 
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(0);
@@ -148,6 +158,14 @@ export function App() {
   const [modalHighlightKey, setModalHighlightKey] = useState<string | null>(null);
   const [modalScrollOff, setModalScrollOff] = useState(0);
 
+  // ---- adaptive custom-face panel ----
+  const [facesMode, setFacesMode] = useState(false);
+  const [customFaces, setCustomFaces] = useState<StickerItem[]>([]);
+  const [faceCapability, setFaceCapability] = useState<StickerCapability>("unknown");
+  const [facesLoading, setFacesLoading] = useState(false);
+  const [faceHighlight, setFaceHighlight] = useState(0);
+  const [faceScrollOffset, setFaceScrollOffset] = useState(0);
+
   useEffect(() => {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
@@ -179,6 +197,16 @@ export function App() {
   useEffect(() => {
     attachmentsRef.current = attachments;
   }, [attachments]);
+
+  useEffect(() => {
+    if (connected) return;
+    faceRequestRef.current += 1;
+    setFaceCapability("unknown");
+    setCustomFaces([]);
+    setFacesLoading(false);
+    setFaceHighlight(0);
+    setFaceScrollOffset(0);
+  }, [connected]);
 
   useEffect(() => () => {
     for (const attachment of attachmentsRef.current) {
@@ -408,6 +436,134 @@ export function App() {
     setInputText("");
   }
 
+  async function loadCustomFaces(force = false) {
+    if (facesLoading) return;
+    if (!force && faceCapability !== "unknown") return;
+
+    const client = qqRef.current;
+    if (!client || !connected) {
+      setFacesLoading(false);
+      setStatusMsg("Waiting for OneBot connection");
+      return;
+    }
+
+    const requestId = ++faceRequestRef.current;
+    setFacesLoading(true);
+    setFaceCapability("unknown");
+    setStatusMsg("Detecting custom-face capability...");
+
+    try {
+      const items = await customFaceProviderRef.current.load(client);
+      if (requestId !== faceRequestRef.current) return;
+
+      setFacesLoading(false);
+      if (items === null) {
+        setCustomFaces([]);
+        setFaceCapability("unsupported");
+        setFaceHighlight(0);
+        setFaceScrollOffset(0);
+        setStatusMsg("Custom faces unavailable · adapter extension missing");
+        return;
+      }
+
+      setCustomFaces(items);
+      setFaceCapability("supported");
+      setFaceHighlight(0);
+      setFaceScrollOffset(0);
+      setStatusMsg(
+        items.length > 0
+          ? `${items.length} custom faces loaded`
+          : "Custom face extension available · no faces returned"
+      );
+    } catch (error) {
+      if (requestId !== faceRequestRef.current) return;
+      setFacesLoading(false);
+      setFaceCapability("unsupported");
+      setCustomFaces([]);
+      const detail = error instanceof Error ? error.message : String(error);
+      setStatusMsg(`Custom faces unavailable · ${detail}`);
+    }
+  }
+
+  function openFaces(force = false) {
+    setHelpMode(false);
+    setForwardView(null);
+    setModalMode(false);
+    setFacesMode(true);
+    setInputText("");
+    if (force) {
+      setFaceCapability("unknown");
+      setCustomFaces([]);
+      setFaceHighlight(0);
+      setFaceScrollOffset(0);
+    }
+    void loadCustomFaces(force);
+  }
+
+  function closeFaces() {
+    faceRequestRef.current += 1;
+    setFacesMode(false);
+    setFacesLoading(false);
+    setInputText("");
+  }
+
+  function setFaceSelection(index: number) {
+    const total = customFaces.length;
+    if (total === 0) return;
+    const next = clamp(index, 0, total - 1);
+    const layout = getFacePanelLayout(bodyRows, termWidth);
+    const pageStart = Math.floor(next / layout.visibleCount) * layout.visibleCount;
+    setFaceHighlight(next);
+    setFaceScrollOffset(pageStart);
+  }
+
+  function moveFaceSelection(delta: number) {
+    setFaceSelection(faceHighlight + delta);
+  }
+
+  async function sendSticker(sticker: StickerItem) {
+    if (!activeSession || !qqRef.current) {
+      setStatusMsg("No active session. Use /session <name>");
+      return;
+    }
+
+    const chatType = activeSession.type === "group" ? "group" : "private";
+    const segments: MessageSegment[] = [
+      { type: "image", data: { file: sticker.file } },
+    ];
+    setStatusMsg(`Sending face #${faceHighlight + 1}...`);
+
+    const messageId = await qqRef.current.sendMessage(
+      chatType,
+      activeSession.id,
+      segments
+    );
+    if (messageId === null) {
+      setStatusMsg("Send failed · custom face URL rejected");
+      return;
+    }
+
+    const sent: ChatMessage = {
+      id: messageId,
+      contactId: activeSession.id,
+      chatType,
+      senderId: selfId,
+      senderName: nickname || "Me",
+      content: "",
+      timestamp: Date.now(),
+      isMine: true,
+      group_id: activeSession.type === "group" ? activeSession.id : undefined,
+      segments,
+    };
+    const key = messageKey(sent);
+    if (!messagesRef.current.some((item) => messageKey(item) === key)) {
+      messagesRef.current = [...messagesRef.current, sent];
+      setMessages(messagesRef.current);
+    }
+    setMessageScrollOffset(0);
+    setStatusMsg(`Face #${faceHighlight + 1} sent`);
+  }
+
   function attachPastedImagePaths(value: string) {
     setStatusMsg("Importing pasted image...");
     void importPastedImagePaths(value)
@@ -447,6 +603,8 @@ export function App() {
         setForwardScrollOffset(0);
       } else if (helpMode) {
         setHelpMode(false);
+      } else if (facesMode) {
+        closeFaces();
       } else if (modalMode) {
         closeModal();
       } else {
@@ -492,6 +650,41 @@ export function App() {
         );
       } else if (key.end) {
         setForwardScrollOffset(0);
+      }
+      return;
+    }
+
+    if (facesMode) {
+      const total = customFaces.length;
+      const layout = getFacePanelLayout(bodyRows, termWidth);
+
+      if (key.return) {
+        const selected = customFaces[faceHighlight];
+        if (selected) void sendSticker(selected);
+        else if (!facesLoading) setStatusMsg("No custom face selected");
+        return;
+      }
+      if (!facesLoading && input.toLowerCase() === "r") {
+        openFaces(true);
+        return;
+      }
+      if (total === 0) return;
+      if (key.upArrow) {
+        moveFaceSelection(-layout.columns);
+      } else if (key.downArrow) {
+        moveFaceSelection(layout.columns);
+      } else if (key.leftArrow) {
+        moveFaceSelection(-1);
+      } else if (key.rightArrow) {
+        moveFaceSelection(1);
+      } else if (key.pageUp) {
+        moveFaceSelection(-layout.visibleCount);
+      } else if (key.pageDown) {
+        moveFaceSelection(layout.visibleCount);
+      } else if (key.home) {
+        setFaceSelection(0);
+      } else if (key.end) {
+        setFaceSelection(total - 1);
       }
       return;
     }
@@ -812,6 +1005,17 @@ export function App() {
         setInputText("");
         break;
       }
+      case "/faces":
+      case "/stickers": {
+        const normalized = args.trim().toLowerCase();
+        if (normalized && normalized !== "refresh" && normalized !== "reload") {
+          setStatusMsg("Usage: /faces [refresh]");
+          setInputText("");
+          break;
+        }
+        openFaces(normalized === "refresh" || normalized === "reload");
+        break;
+      }
       case "/reply": {
         const messageId = args.trim().replace(/^#/, "");
         if (!messageId) {
@@ -985,7 +1189,7 @@ export function App() {
     maxMessageScrollOffset
   );
 
-  if (!forwardView && !helpMode && !modalMode && activeSession) {
+  if (!forwardView && !helpMode && !modalMode && !facesMode && activeSession) {
     return (
       <ChatPage
         state={{
@@ -1046,6 +1250,18 @@ export function App() {
             termWidth={termWidth}
             unreadTotal={unreadTotal}
           />
+        ) : facesMode ? (
+          <FacePanel
+            items={customFaces}
+            capability={faceCapability}
+            loading={facesLoading}
+            highlightIndex={faceHighlight}
+            scrollOffset={faceScrollOffset}
+            bodyRows={bodyRows}
+            termWidth={termWidth}
+            statusMsg={statusMsg}
+            resolveImageSource={resolveImageSource}
+          />
         ) : !activeSession ? (
           <EmptyState
             activeSession={activeSession}
@@ -1076,6 +1292,7 @@ export function App() {
         onPaste={handlePaste}
         helpMode={helpMode}
         modalMode={modalMode}
+        facesMode={facesMode}
         forwardMode={Boolean(forwardView)}
         activeSession={activeSession}
         statusMsg={statusMsg}
