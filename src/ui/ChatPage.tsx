@@ -7,9 +7,10 @@ import type {
   ChatMessage,
   Contact,
   ImageSourceResolver,
+  InlineInsertItem,
   ReplyTarget,
 } from "../types.js";
-import { COMPOSER_ROWS, TERMINAL_GUTTER_ROWS } from "./layout.js";
+import { getComposerRows, TERMINAL_GUTTER_ROWS } from "./layout.js";
 import { Composer } from "./Composer.js";
 import {
   getMaxMessageScrollOffset,
@@ -30,6 +31,11 @@ export interface ChatPageState {
   composerCursor: number;
   replyTarget: ReplyTarget | null;
   unreadTotal: number;
+  inlinePickerOpen: boolean;
+  inlinePickerQuery: string;
+  inlinePickerItems: InlineInsertItem[];
+  inlinePickerHighlight: number;
+  inlinePickerLoading: boolean;
 }
 
 interface ChatPageProps {
@@ -56,7 +62,9 @@ export function ChatPage({
   const termWidth = columns || 80;
   const termHeight = rows || 24;
   const bodyRows = Math.max(
-    termHeight - COMPOSER_ROWS - TERMINAL_GUTTER_ROWS,
+    termHeight -
+      getComposerRows(state.inlinePickerOpen) -
+      TERMINAL_GUTTER_ROWS,
     1
   );
   const maxOffset = getMaxMessageScrollOffset(
@@ -113,6 +121,11 @@ export function ChatPage({
         cursorOffset={state.composerCursor}
         onCursorChange={onCursorChange}
         imageMode={state.imageMode}
+        inlinePickerOpen={state.inlinePickerOpen}
+        inlinePickerQuery={state.inlinePickerQuery}
+        inlinePickerItems={state.inlinePickerItems}
+        inlinePickerHighlight={state.inlinePickerHighlight}
+        inlinePickerLoading={state.inlinePickerLoading}
       />
     </Box>
   );

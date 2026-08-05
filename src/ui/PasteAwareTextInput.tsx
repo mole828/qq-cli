@@ -18,6 +18,7 @@ interface PasteAwareTextInputProps {
   onPaste?: (value: string, cursorOffset: number) => boolean;
   focus?: boolean;
   placeholder?: string;
+  inlinePickerOpen?: boolean;
 }
 
 export function PasteAwareTextInput({
@@ -29,6 +30,7 @@ export function PasteAwareTextInput({
   onPaste,
   focus = true,
   placeholder = "",
+  inlinePickerOpen = false,
 }: PasteAwareTextInputProps) {
   usePaste(
     (pastedText) => {
@@ -52,6 +54,7 @@ export function PasteAwareTextInput({
         return;
       }
       if (key.return) {
+        if (inlinePickerOpen) return;
         onSubmit?.();
         return;
       }

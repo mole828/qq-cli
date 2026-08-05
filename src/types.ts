@@ -45,6 +45,21 @@ export interface StickerItem {
   source: "custom";
 }
 
+export interface GroupMember {
+  userId: string;
+  nickname: string;
+  card?: string;
+  role?: string;
+}
+
+export interface InlineInsertItem {
+  type: "at";
+  id: string;
+  label: string;
+  detail: string;
+  qq: string;
+}
+
 export interface ImageReference {
   source: string;
   file?: string;

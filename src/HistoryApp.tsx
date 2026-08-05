@@ -101,6 +101,11 @@ export function HistoryApp({
         composerCursor: 0,
         replyTarget: null,
         unreadTotal: 0,
+        inlinePickerOpen: false,
+        inlinePickerQuery: "",
+        inlinePickerItems: [],
+        inlinePickerHighlight: 0,
+        inlinePickerLoading: false,
       }}
       onInputChange={() => {}}
       onCursorChange={() => {}}

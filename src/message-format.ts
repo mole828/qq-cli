@@ -211,8 +211,10 @@ function compactSegment(
       return compactNewsJson(data, terminalLinks);
     case "reply":
       return replyToken(data, replyLookup, imageMode);
-    case "at":
-      return `@${data.qq || "user"}`;
+    case "at": {
+      const qq = data.qq || (typeof rawData.qq === "number" ? String(rawData.qq) : "");
+      return `@${qq || "user"}`;
+    }
     case "face":
       return "[face]";
     case "forward":

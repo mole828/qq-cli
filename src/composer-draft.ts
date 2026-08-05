@@ -4,6 +4,7 @@ import type { StickerItem } from "./types.js";
 export type ComposerPart =
   | { type: "text"; text: string }
   | { type: "face"; sticker: StickerItem }
+  | { type: "at"; qq: string; label: string }
   | { type: "image"; attachment: ImageAttachment };
 
 export interface ComposerUnit {
@@ -29,7 +30,12 @@ export function composerUnits(parts: ComposerPart[]): ComposerUnit[] {
     }
     return [{
       type: part.type,
-      label: part.type === "face" ? "[face]" : "[image]",
+      label:
+        part.type === "face"
+          ? "[face]"
+          : part.type === "at"
+          ? `@${part.label}`
+          : "[image]",
     }];
   });
 }
@@ -95,6 +101,44 @@ function splitAt(parts: ComposerPart[], offset: number) {
   return { left, right };
 }
 
+export interface ComposerInlineTrigger {
+  start: number;
+  end: number;
+  query: string;
+}
+
+function isWordUnit(unit: ComposerUnit | undefined) {
+  return unit?.type === "text" && /[\p{L}\p{N}_]/u.test(unit.label);
+}
+
+export function getComposerInlineTrigger(
+  parts: ComposerPart[],
+  offset: number
+): ComposerInlineTrigger | null {
+  const units = composerUnits(parts);
+  const cursor = Math.min(Math.max(offset, 0), units.length);
+  let runStart = cursor;
+
+  while (runStart > 0) {
+    const unit = units[runStart - 1];
+    if (unit.type !== "text" || /\s/u.test(unit.label)) break;
+    runStart -= 1;
+  }
+
+  const fragment = units.slice(runStart, cursor).map((unit) => unit.label).join("");
+  const atOffset = fragment.lastIndexOf("@");
+  if (atOffset < 0) return null;
+
+  const start = runStart + atOffset;
+  if (isWordUnit(units[start - 1])) return null;
+
+  return {
+    start,
+    end: cursor,
+    query: fragment.slice(atOffset + 1),
+  };
+}
+
 export function insertComposerPart(
   parts: ComposerPart[],
   offset: number,
@@ -104,6 +148,20 @@ export function insertComposerPart(
   const { left, right } = splitAt(parts, cursor);
   const nextParts = normalizeParts([...left, part, ...right]);
   return { parts: nextParts, cursor: cursor + 1 };
+}
+
+export function replaceComposerPart(
+  parts: ComposerPart[],
+  start: number,
+  end: number,
+  part: Exclude<ComposerPart, { type: "text" }>
+) {
+  const safeStart = Math.min(Math.max(start, 0), composerLength(parts));
+  const safeEnd = Math.min(Math.max(end, safeStart), composerLength(parts));
+  const first = splitAt(parts, safeStart);
+  const second = splitAt(first.right, safeEnd - safeStart);
+  const nextParts = normalizeParts([...first.left, part, ...second.right]);
+  return { parts: nextParts, cursor: safeStart + 1 };
 }
 
 export function insertComposerText(

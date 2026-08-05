@@ -6,12 +6,16 @@ import {
   composerLength,
   composerText,
   emptyComposerParts,
+  getComposerInlineTrigger,
   insertComposerPart,
+  replaceComposerPart,
   type ComposerPart,
 } from "./composer-draft.js";
 import type {
   Contact,
   ChatMessage,
+  GroupMember,
+  InlineInsertItem,
   MessageSegment,
   ForwardNode,
   ReplyTarget,
@@ -36,7 +40,7 @@ import { ChatPage } from "./ui/ChatPage.js";
 import { EmptyState } from "./ui/EmptyState.js";
 import { HelpPanel } from "./ui/HelpPanel.js";
 import { ForwardPanel, getForwardPanelMaxOffset } from "./ui/ForwardPanel.js";
-import { COMPOSER_ROWS, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
+import { COMPOSER_ROWS, getComposerRows, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
 import { SessionPicker } from "./ui/SessionPicker.js";
 import { FacePanel, getFacePanelLayout } from "./ui/FacePanel.js";
 import {
@@ -50,6 +54,7 @@ import {
   moveMessageScrollOffset,
 } from "./ui/MessageList.js";
 import { useImageMetadataVersion } from "./ui/ImagePreview.js";
+import { buildInlineMentionItems } from "./inline-insert.js";
 
 function clamp(v: number, lo: number, hi: number) {
   return v < lo ? lo : v > hi ? hi : v;
@@ -107,7 +112,7 @@ export function App() {
   const termHeight = rows || 24;
   // Ink clears the terminal when an interactive frame reaches the full viewport
   // height. Keep one row unused so picker/session transitions preserve scrollback.
-  const bodyRows = Math.max(
+  const baseBodyRows = Math.max(
     termHeight - COMPOSER_ROWS - TERMINAL_GUTTER_ROWS,
     1
   );
@@ -124,6 +129,8 @@ export function App() {
   const completionRef = useRef<{ prefix: string; index: number } | null>(null);
   const faceRequestRef = useRef(0);
   const customFaceProviderRef = useRef(new CustomFaceProvider());
+  const groupMemberRequestRef = useRef(0);
+  const groupMembersCacheRef = useRef(new Map<number, GroupMember[]>());
 
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(0);
@@ -150,7 +157,7 @@ export function App() {
   const [imageMode, setImageMode] = useState(() => getInitialImageMode());
   const [messageGap] = useState(() => getInitialMessageGap());
   const messageViewportRef = useRef({
-    bodyRows,
+    bodyRows: baseBodyRows,
     imageMode,
     messageGap,
     selfId,
@@ -172,9 +179,36 @@ export function App() {
   const [facesLoading, setFacesLoading] = useState(false);
   const [faceHighlight, setFaceHighlight] = useState(0);
   const [faceScrollOffset, setFaceScrollOffset] = useState(0);
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  const [groupMembersLoading, setGroupMembersLoading] = useState(false);
+  const [inlinePickerHighlight, setInlinePickerHighlight] = useState(0);
+  const [inlinePickerDismissed, setInlinePickerDismissed] = useState<string | null>(null);
 
   const inputText = composerText(composerParts);
   const hasComposerMedia = composerParts.some((part) => part.type !== "text");
+  const inlineTrigger = getComposerInlineTrigger(composerParts, composerCursor);
+  const inlineTriggerSignature = inlineTrigger
+    ? `${inlineTrigger.start}:${inlineTrigger.end}:${inlineTrigger.query}`
+    : null;
+  const inlinePickerOpen = Boolean(
+    activeSession?.type === "group" &&
+      inlineTrigger &&
+      inlinePickerDismissed !== inlineTriggerSignature &&
+      !helpMode &&
+      !modalMode &&
+      !facesMode &&
+      !forwardView
+  );
+  const inlinePickerItems = useMemo<InlineInsertItem[]>(
+    () => buildInlineMentionItems(groupMembers, inlineTrigger?.query || ""),
+    [groupMembers, inlineTrigger?.query]
+  );
+  const inlinePickerLoading = groupMembersLoading;
+  const activeGroupId = activeSession?.type === "group" ? activeSession.id : null;
+  const bodyRows = Math.max(
+    termHeight - getComposerRows(inlinePickerOpen) - TERMINAL_GUTTER_ROWS,
+    1
+  );
 
   function updateComposerDraft(nextParts: ComposerPart[], nextCursor: number) {
     const previousImages = composerImages(composerPartsRef.current);
@@ -191,6 +225,7 @@ export function App() {
   }
 
   function setInputText(value: string) {
+    setInlinePickerDismissed(null);
     updateComposerDraft(
       value ? [{ type: "text", text: value }] : emptyComposerParts(),
       Array.from(value).length
@@ -238,12 +273,54 @@ export function App() {
   useEffect(() => {
     if (connected) return;
     faceRequestRef.current += 1;
+    groupMemberRequestRef.current += 1;
+    groupMembersCacheRef.current.clear();
     setFaceCapability("unknown");
     setCustomFaces([]);
     setFacesLoading(false);
     setFaceHighlight(0);
     setFaceScrollOffset(0);
+    setGroupMembers([]);
+    setGroupMembersLoading(false);
   }, [connected]);
+
+  useEffect(() => {
+    setInlinePickerHighlight(0);
+  }, [inlinePickerOpen, inlineTriggerSignature, inlinePickerItems.length]);
+
+  useEffect(() => {
+    groupMemberRequestRef.current += 1;
+    if (!connected || activeGroupId === null) {
+      setGroupMembers([]);
+      setGroupMembersLoading(false);
+      return;
+    }
+
+    const cached = groupMembersCacheRef.current.get(activeGroupId);
+    setGroupMembers(cached || []);
+
+    if (!inlinePickerOpen) {
+      setGroupMembersLoading(false);
+      return;
+    }
+
+    if (cached) {
+      setGroupMembersLoading(false);
+      return;
+    }
+
+    const client = qqRef.current;
+    if (!client) return;
+
+    const requestId = groupMemberRequestRef.current;
+    setGroupMembersLoading(true);
+    void client.getGroupMemberList(activeGroupId).then((members) => {
+      if (requestId !== groupMemberRequestRef.current) return;
+      groupMembersCacheRef.current.set(activeGroupId, members);
+      setGroupMembers(members);
+      setGroupMembersLoading(false);
+    });
+  }, [activeGroupId, connected, inlinePickerOpen]);
 
   useEffect(() => () => {
     for (const attachment of composerImages(composerPartsRef.current)) {
@@ -607,6 +684,7 @@ export function App() {
 
   function handleInputChange(nextParts: ComposerPart[], nextCursor: number) {
     completionRef.current = null;
+    setInlinePickerDismissed(null);
     handleComposerChange(nextParts, nextCursor);
   }
 
@@ -614,6 +692,39 @@ export function App() {
     if (modalMode || !looksLikePastedImagePath(value)) return false;
     attachPastedImagePaths(value);
     return true;
+  }
+
+  function moveInlineSelection(delta: number) {
+    const total = inlinePickerItems.length;
+    if (total === 0) return;
+    setInlinePickerHighlight((current) => (current + delta + total) % total);
+  }
+
+  function selectInlineItem() {
+    const trigger = getComposerInlineTrigger(
+      composerPartsRef.current,
+      composerCursorRef.current
+    );
+    const item = inlinePickerItems[inlinePickerHighlight];
+    if (!trigger || !item) {
+      if (!inlinePickerLoading) setStatusMsg("No matching inline insert");
+      return;
+    }
+
+    const part: ComposerPart = {
+      type: "at",
+      qq: item.qq,
+      label: item.label,
+    };
+    const next = replaceComposerPart(
+      composerPartsRef.current,
+      trigger.start,
+      trigger.end,
+      part
+    );
+    updateComposerDraft(next.parts, next.cursor);
+    setInlinePickerDismissed(null);
+    setStatusMsg(`Mentioned @${item.label}`);
   }
 
   // ---- key bindings ----
@@ -633,11 +744,36 @@ export function App() {
         closeFaces();
       } else if (modalMode) {
         closeModal();
+      } else if (inlinePickerOpen && inlineTriggerSignature) {
+        setInlinePickerDismissed(inlineTriggerSignature);
       } else {
         setInputText("");
         setReplyTarget(null);
       }
       return;
+    }
+
+    if (inlinePickerOpen) {
+      if (key.return || (key.tab && !key.shift)) {
+        selectInlineItem();
+        return;
+      }
+      if (key.upArrow) {
+        moveInlineSelection(-1);
+        return;
+      }
+      if (key.downArrow) {
+        moveInlineSelection(1);
+        return;
+      }
+      if (key.pageUp) {
+        moveInlineSelection(-3);
+        return;
+      }
+      if (key.pageDown) {
+        moveInlineSelection(3);
+        return;
+      }
     }
 
     if (helpMode) {
@@ -1160,6 +1296,11 @@ export function App() {
             type: "image",
             data: { file: part.sticker.file },
           });
+        } else if (part.type === "at") {
+          segments.push({
+            type: "at",
+            data: { qq: part.qq },
+          });
         } else {
           segments.push({
             type: "image",
@@ -1237,6 +1378,11 @@ export function App() {
           composerCursor,
           replyTarget,
           unreadTotal,
+          inlinePickerOpen,
+          inlinePickerQuery: inlineTrigger?.query || "",
+          inlinePickerItems,
+          inlinePickerHighlight,
+          inlinePickerLoading,
         }}
         onInputChange={handleInputChange}
         onCursorChange={handleComposerCursorChange}
@@ -1335,6 +1481,11 @@ export function App() {
         unreadTotal={unreadTotal}
         termWidth={termWidth}
         imageMode={imageMode}
+        inlinePickerOpen={inlinePickerOpen}
+        inlinePickerQuery={inlineTrigger?.query || ""}
+        inlinePickerItems={inlinePickerItems}
+        inlinePickerHighlight={inlinePickerHighlight}
+        inlinePickerLoading={inlinePickerLoading}
       />
     </Box>
   );

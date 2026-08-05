@@ -5,9 +5,10 @@ import {
   type ComposerPart,
 } from "../composer-draft.js";
 import type { ImageMode } from "../config.js";
-import type { Contact, ReplyTarget } from "../types.js";
+import type { Contact, InlineInsertItem, ReplyTarget } from "../types.js";
 import { textWidth, truncateCells } from "../terminal-text.js";
-import { COMPOSER_ROWS } from "./layout.js";
+import { getComposerRows } from "./layout.js";
+import { InlineInsertPanel } from "./InlineInsertPanel.js";
 import { PasteAwareTextInput } from "./PasteAwareTextInput.js";
 
 interface ComposerProps {
@@ -28,6 +29,11 @@ interface ComposerProps {
   unreadTotal: number;
   termWidth: number;
   imageMode: ImageMode;
+  inlinePickerOpen?: boolean;
+  inlinePickerQuery?: string;
+  inlinePickerItems?: InlineInsertItem[];
+  inlinePickerHighlight?: number;
+  inlinePickerLoading?: boolean;
 }
 
 export function Composer({
@@ -48,6 +54,11 @@ export function Composer({
   unreadTotal,
   termWidth,
   imageMode,
+  inlinePickerOpen = false,
+  inlinePickerQuery = "",
+  inlinePickerItems = [],
+  inlinePickerHighlight = 0,
+  inlinePickerLoading = false,
 }: ComposerProps) {
   const divider = "─".repeat(Math.max(termWidth - 2, 4));
   const composerWidth = Math.max(termWidth - 2, 12);
@@ -95,6 +106,7 @@ export function Composer({
     0
   );
   const imageModeLabel = imageMode === "inline" ? "Images: inline" : "";
+  const composerRows = getComposerRows(inlinePickerOpen);
   const replyLabel = replyTarget
     ? truncateCells(
         ` · ↳ #${replyTarget.messageId} ${replyTarget.senderName}: ${replyTarget.preview}`,
@@ -105,11 +117,20 @@ export function Composer({
 
   return (
     <Box
-      height={COMPOSER_ROWS}
+      height={composerRows}
       flexShrink={0}
       overflow="hidden"
       flexDirection="column"
     >
+      {inlinePickerOpen && (
+        <InlineInsertPanel
+          items={inlinePickerItems}
+          query={inlinePickerQuery}
+          highlightIndex={inlinePickerHighlight}
+          loading={inlinePickerLoading}
+          width={composerWidth}
+        />
+      )}
       <Box height={1} paddingX={1}>
         <Text color="gray" dimColor>
           {divider}
@@ -144,6 +165,7 @@ export function Composer({
               onPaste={onPaste}
               focus={!helpMode && !facesMode && !forwardMode}
               placeholder={composerPlaceholder}
+              inlinePickerOpen={inlinePickerOpen}
             />
           </Text>
           <Text backgroundColor={composerBg}>

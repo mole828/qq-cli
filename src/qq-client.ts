@@ -8,6 +8,7 @@ import type {
   ChatMessage,
   MessageSegment,
   ForwardNode,
+  GroupMember,
 } from "./types.js";
 
 function parseWsUrl(rawUrl: string): {
@@ -507,6 +508,32 @@ export class QQClient {
     }
     logger.warn("Failed to load group list", { retcode: res.retcode });
     return [];
+  }
+
+  async getGroupMemberList(groupId: number): Promise<GroupMember[]> {
+    const res = await this.callApi("get_group_member_list", {
+      group_id: groupId,
+    });
+    if (res.status !== "ok" || !Array.isArray(res.data)) {
+      logger.warn("Failed to load group member list", {
+        group_id: groupId,
+        retcode: res.retcode,
+      });
+      return [];
+    }
+
+    const list = (res.data as Array<Record<string, unknown>>).flatMap((item) => {
+      const rawId = item.user_id;
+      if (typeof rawId !== "number" && typeof rawId !== "string") return [];
+
+      const userId = String(rawId);
+      const nickname = typeof item.nickname === "string" ? item.nickname : userId;
+      const card = typeof item.card === "string" ? item.card : undefined;
+      const role = typeof item.role === "string" ? item.role : undefined;
+      return [{ userId, nickname, ...(card ? { card } : {}), ...(role ? { role } : {}) }];
+    });
+    logger.info("Group member list loaded", { group_id: groupId, count: list.length });
+    return list;
   }
 
   async getRecentContactActivity(

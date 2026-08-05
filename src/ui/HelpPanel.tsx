@@ -19,6 +19,7 @@ export const HELP_ROWS = [
   ["End", "Jump to the latest message"],
   ["Cmd+←/→ · Ctrl+A/E", "Jump to the start or end of the composer"],
   ["Ctrl+F", "Open custom faces at the current composer cursor"],
+  ["@", "Open group-member mentions at the cursor"],
   ["Esc", "Close panel or clear input"],
   ["Cmd+V / Ctrl+V", "Attach image from the macOS clipboard"],
   ["Backspace", "Remove the last image or face when input is empty"],
