@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, useWindowSize } from "ink";
 import { useTerminalInfo } from "ink-picture";
-import type { ImageAttachment } from "../clipboard-image.js";
+import type { ComposerPart } from "../composer-draft.js";
 import type { ImageMode } from "../config.js";
 import type {
   ChatMessage,
@@ -26,24 +26,25 @@ export interface ChatPageState {
   messageGap: number;
   connected: boolean;
   statusMsg: string;
-  inputText: string;
+  composerParts: ComposerPart[];
+  composerCursor: number;
   replyTarget: ReplyTarget | null;
-  attachments: ImageAttachment[];
   unreadTotal: number;
-  moveCursorToEndKey: number;
 }
 
 interface ChatPageProps {
   state: ChatPageState;
-  onInputChange: (value: string) => void;
-  onSubmit: (value: string) => void;
-  onPaste: (value: string) => boolean;
+  onInputChange: (parts: ComposerPart[], cursorOffset: number) => void;
+  onCursorChange: (cursorOffset: number) => void;
+  onSubmit: () => void;
+  onPaste: (value: string, cursorOffset: number) => boolean;
   resolveImageSource?: ImageSourceResolver;
 }
 
 export function ChatPage({
   state,
   onInputChange,
+  onCursorChange,
   onSubmit,
   onPaste,
   resolveImageSource,
@@ -96,7 +97,6 @@ export function ChatPage({
       </Box>
 
       <Composer
-        inputText={state.inputText}
         onChange={onInputChange}
         onSubmit={onSubmit}
         onPaste={onPaste}
@@ -109,9 +109,10 @@ export function ChatPage({
         connected={state.connected}
         unreadTotal={state.unreadTotal}
         termWidth={termWidth}
-        attachments={state.attachments}
+        parts={state.composerParts}
+        cursorOffset={state.composerCursor}
+        onCursorChange={onCursorChange}
         imageMode={state.imageMode}
-        moveCursorToEndKey={state.moveCursorToEndKey}
       />
     </Box>
   );

@@ -1,6 +1,14 @@
 import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { Box, useInput, useWindowSize, useApp } from "ink";
 import { useTerminalInfo } from "ink-picture";
+import {
+  composerImages,
+  composerLength,
+  composerText,
+  emptyComposerParts,
+  insertComposerPart,
+  type ComposerPart,
+} from "./composer-draft.js";
 import type {
   Contact,
   ChatMessage,
@@ -16,7 +24,6 @@ import {
   looksLikePastedImagePath,
   readClipboardImageAttachments,
   removeAttachment,
-  type ImageAttachment,
 } from "./clipboard-image.js";
 import {
   getInitialImageMode,
@@ -112,7 +119,8 @@ export function App() {
   const messagesRef = useRef<ChatMessage[]>([]);
   const sessionGenerationRef = useRef(0);
   const messageScrollOffsetRef = useRef(0);
-  const attachmentsRef = useRef<ImageAttachment[]>([]);
+  const composerPartsRef = useRef<ComposerPart[]>(emptyComposerParts());
+  const composerCursorRef = useRef(0);
   const completionRef = useRef<{ prefix: string; index: number } | null>(null);
   const faceRequestRef = useRef(0);
   const customFaceProviderRef = useRef(new CustomFaceProvider());
@@ -127,9 +135,8 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageScrollOffset, setMessageScrollOffset] = useState(0);
   const [activeSession, setActiveSession] = useState<Contact | null>(null);
-  const [inputText, setInputText] = useState("");
-  const [moveCursorToEndKey, setMoveCursorToEndKey] = useState(0);
-  const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
+  const [composerParts, setComposerParts] = useState<ComposerPart[]>(() => emptyComposerParts());
+  const [composerCursor, setComposerCursor] = useState(0);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
@@ -166,6 +173,40 @@ export function App() {
   const [faceHighlight, setFaceHighlight] = useState(0);
   const [faceScrollOffset, setFaceScrollOffset] = useState(0);
 
+  const inputText = composerText(composerParts);
+  const hasComposerMedia = composerParts.some((part) => part.type !== "text");
+
+  function updateComposerDraft(nextParts: ComposerPart[], nextCursor: number) {
+    const previousImages = composerImages(composerPartsRef.current);
+    const nextImageIds = new Set(composerImages(nextParts).map((attachment) => attachment.id));
+    for (const attachment of previousImages) {
+      if (!nextImageIds.has(attachment.id)) void removeAttachment(attachment);
+    }
+
+    const cursor = Math.min(Math.max(nextCursor, 0), composerLength(nextParts));
+    composerPartsRef.current = nextParts;
+    composerCursorRef.current = cursor;
+    setComposerParts(nextParts);
+    setComposerCursor(cursor);
+  }
+
+  function setInputText(value: string) {
+    updateComposerDraft(
+      value ? [{ type: "text", text: value }] : emptyComposerParts(),
+      Array.from(value).length
+    );
+  }
+
+  function handleComposerChange(nextParts: ComposerPart[], nextCursor: number) {
+    updateComposerDraft(nextParts, nextCursor);
+  }
+
+  function handleComposerCursorChange(nextCursor: number) {
+    const cursor = Math.min(Math.max(nextCursor, 0), composerLength(composerPartsRef.current));
+    composerCursorRef.current = cursor;
+    setComposerCursor(cursor);
+  }
+
   useEffect(() => {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
@@ -195,10 +236,6 @@ export function App() {
   ]);
 
   useEffect(() => {
-    attachmentsRef.current = attachments;
-  }, [attachments]);
-
-  useEffect(() => {
     if (connected) return;
     faceRequestRef.current += 1;
     setFaceCapability("unknown");
@@ -209,7 +246,7 @@ export function App() {
   }, [connected]);
 
   useEffect(() => () => {
-    for (const attachment of attachmentsRef.current) {
+    for (const attachment of composerImages(composerPartsRef.current)) {
       void removeAttachment(attachment);
     }
   }, []);
@@ -388,7 +425,7 @@ export function App() {
   }, [filteredContacts, modalMode]);
 
   // picker handleSubmit - Enter selects highlighted contact
-  function handleSubmit(value: string) {
+  function handleSubmit() {
     if (forwardView) return;
     if (helpMode) {
       setHelpMode(false);
@@ -407,12 +444,19 @@ export function App() {
       return;
     }
 
-    const trimmed = value.trim();
-    if (!trimmed && attachments.length === 0) return;
-    if (trimmed.startsWith("/")) {
+    const trimmed = inputText.trim();
+    const hasPendingReply = Boolean(
+      activeSession && replyTarget?.sessionKey === sessionKey(activeSession)
+    );
+    if (
+      !trimmed &&
+      !hasComposerMedia &&
+      !hasPendingReply
+    ) return;
+    if (trimmed.startsWith("/") && !hasComposerMedia) {
       handleCommand(trimmed);
     } else {
-      handleSend(trimmed);
+      handleSend();
     }
   }
 
@@ -485,12 +529,12 @@ export function App() {
     }
   }
 
-  function openFaces(force = false) {
+  function openFaces(force = false, clearDraft = false) {
     setHelpMode(false);
     setForwardView(null);
     setModalMode(false);
     setFacesMode(true);
-    setInputText("");
+    if (clearDraft) setInputText("");
     if (force) {
       setFaceCapability("unknown");
       setCustomFaces([]);
@@ -504,7 +548,6 @@ export function App() {
     faceRequestRef.current += 1;
     setFacesMode(false);
     setFacesLoading(false);
-    setInputText("");
   }
 
   function setFaceSelection(index: number) {
@@ -521,54 +564,37 @@ export function App() {
     setFaceSelection(faceHighlight + delta);
   }
 
-  async function sendSticker(sticker: StickerItem) {
-    if (!activeSession || !qqRef.current) {
+  function queueSticker(sticker: StickerItem) {
+    if (!activeSession) {
       setStatusMsg("No active session. Use /session <name>");
       return;
     }
 
-    const chatType = activeSession.type === "group" ? "group" : "private";
-    const segments: MessageSegment[] = [
-      { type: "image", data: { file: sticker.file } },
-    ];
-    setStatusMsg(`Sending face #${faceHighlight + 1}...`);
-
-    const messageId = await qqRef.current.sendMessage(
-      chatType,
-      activeSession.id,
-      segments
+    const next = insertComposerPart(
+      composerPartsRef.current,
+      composerCursorRef.current,
+      { type: "face", sticker }
     );
-    if (messageId === null) {
-      setStatusMsg("Send failed · custom face URL rejected");
-      return;
-    }
-
-    const sent: ChatMessage = {
-      id: messageId,
-      contactId: activeSession.id,
-      chatType,
-      senderId: selfId,
-      senderName: nickname || "Me",
-      content: "",
-      timestamp: Date.now(),
-      isMine: true,
-      group_id: activeSession.type === "group" ? activeSession.id : undefined,
-      segments,
-    };
-    const key = messageKey(sent);
-    if (!messagesRef.current.some((item) => messageKey(item) === key)) {
-      messagesRef.current = [...messagesRef.current, sent];
-      setMessages(messagesRef.current);
-    }
-    setMessageScrollOffset(0);
-    setStatusMsg(`Face #${faceHighlight + 1} sent`);
+    updateComposerDraft(next.parts, next.cursor);
+    setStatusMsg(`Face #${faceHighlight + 1} added to composer`);
   }
 
   function attachPastedImagePaths(value: string) {
     setStatusMsg("Importing pasted image...");
     void importPastedImagePaths(value)
       .then((nextAttachments) => {
-        setAttachments((current) => [...current, ...nextAttachments]);
+        let nextParts = composerPartsRef.current;
+        let nextCursor = composerCursorRef.current;
+        for (const attachment of nextAttachments) {
+          const inserted = insertComposerPart(
+            nextParts,
+            nextCursor,
+            { type: "image", attachment }
+          );
+          nextParts = inserted.parts;
+          nextCursor = inserted.cursor;
+        }
+        updateComposerDraft(nextParts, nextCursor);
         setStatusMsg(
           `${nextAttachments.length} image${nextAttachments.length === 1 ? "" : "s"} attached`
         );
@@ -579,12 +605,12 @@ export function App() {
       });
   }
 
-  function handleInputChange(value: string) {
+  function handleInputChange(nextParts: ComposerPart[], nextCursor: number) {
     completionRef.current = null;
-    setInputText(value);
+    handleComposerChange(nextParts, nextCursor);
   }
 
-  function handlePaste(value: string) {
+  function handlePaste(value: string, _cursorOffset: number) {
     if (modalMode || !looksLikePastedImagePath(value)) return false;
     attachPastedImagePaths(value);
     return true;
@@ -610,9 +636,6 @@ export function App() {
       } else {
         setInputText("");
         setReplyTarget(null);
-        const discarded = attachments;
-        setAttachments([]);
-        for (const attachment of discarded) void removeAttachment(attachment);
       }
       return;
     }
@@ -660,7 +683,7 @@ export function App() {
 
       if (key.return) {
         const selected = customFaces[faceHighlight];
-        if (selected) void sendSticker(selected);
+        if (selected) queueSticker(selected);
         else if (!facesLoading) setStatusMsg("No custom face selected");
         return;
       }
@@ -689,14 +712,27 @@ export function App() {
       return;
     }
 
+    if (!modalMode && key.ctrl && input.toLowerCase() === "f") {
+      openFaces();
+      return;
+    }
+
     if (!modalMode && (key.ctrl || key.meta || key.super) && input.toLowerCase() === "v") {
-      // ink-text-input also receives the key event; restore the controlled value
-      // so the shortcut does not insert a literal "v" into the composer.
-      setInputText(inputText);
       setStatusMsg("Reading clipboard image...");
       void readClipboardImageAttachments()
         .then((nextAttachments) => {
-          setAttachments((current) => [...current, ...nextAttachments]);
+          let nextParts = composerPartsRef.current;
+          let nextCursor = composerCursorRef.current;
+          for (const attachment of nextAttachments) {
+            const inserted = insertComposerPart(
+              nextParts,
+              nextCursor,
+              { type: "image", attachment }
+            );
+            nextParts = inserted.parts;
+            nextCursor = inserted.cursor;
+          }
+          updateComposerDraft(nextParts, nextCursor);
           setStatusMsg(
             `${nextAttachments.length} image${nextAttachments.length === 1 ? "" : "s"} attached`
           );
@@ -705,19 +741,6 @@ export function App() {
           const detail = error instanceof Error ? error.message : String(error);
           setStatusMsg(`Paste failed · ${detail}`);
         });
-      return;
-    }
-
-    if (
-      !modalMode &&
-      key.backspace &&
-      inputText.length === 0 &&
-      attachments.length > 0
-    ) {
-      const attachment = attachments[attachments.length - 1];
-      setAttachments((current) => current.slice(0, -1));
-      void removeAttachment(attachment);
-      setStatusMsg("Attachment removed");
       return;
     }
 
@@ -849,7 +872,9 @@ export function App() {
 
     if (key.tab) {
       const activeCompletion = completionRef.current;
-      const messageCommandMatch = inputText.match(/^\/(forward|reply)\s+(\S*)$/i);
+      const messageCommandMatch = !hasComposerMedia
+        ? inputText.match(/^\/(forward|reply)\s+(\S*)$/i)
+        : null;
       const prefix = activeCompletion?.prefix ?? (
         messageCommandMatch
           ? `/${messageCommandMatch[1].toLowerCase()} ${messageCommandMatch[2]}`
@@ -873,7 +898,7 @@ export function App() {
               .sort((a, b) => b.timestamp - a.timestamp)
               .map((message) => `/${messageCommand} ${message.id}`)
           )]
-        : !inputText.includes(" ") && inputText.startsWith("/")
+        : !hasComposerMedia && !inputText.includes(" ") && inputText.startsWith("/")
         ? COMPLETABLE_COMMANDS.filter((command) => command.startsWith(prefix))
         : [];
       if (matches.length === 0) return;
@@ -883,7 +908,6 @@ export function App() {
         : 0;
       completionRef.current = { prefix, index };
       setInputText(matches[index]);
-      setMoveCursorToEndKey((current) => current + 1);
       return;
     }
 
@@ -895,6 +919,7 @@ export function App() {
       sessionGenerationRef.current = generation;
       messageScrollOffsetRef.current = 0;
       setReplyTarget(null);
+      setInputText("");
       setMessageScrollOffset(0);
       activeSessionRef.current = contact;
       setActiveSession(contact);
@@ -1013,7 +1038,7 @@ export function App() {
           setInputText("");
           break;
         }
-        openFaces(normalized === "refresh" || normalized === "reload");
+        openFaces(normalized === "refresh" || normalized === "reload", true);
         break;
       }
       case "/reply": {
@@ -1107,14 +1132,15 @@ export function App() {
     }
   }
 
-  async function handleSend(text: string) {
+  async function handleSend() {
     if (!activeSession || !qqRef.current) {
       setStatusMsg("No active session. Use /session <name>");
       return;
     }
 
     const chatType = activeSession.type === "group" ? "group" : "private";
-    const pendingAttachments = attachments;
+    const pendingParts = composerPartsRef.current;
+    const text = composerText(pendingParts);
     const pendingReply =
       replyTarget?.sessionKey === sessionKey(activeSession) ? replyTarget : null;
 
@@ -1126,12 +1152,20 @@ export function App() {
           data: { id: pendingReply.messageId },
         });
       }
-      if (text) segments.push({ type: "text", data: { text } });
-      for (const attachment of pendingAttachments) {
-        segments.push({
-          type: "image",
-          data: { file: await attachmentToBase64(attachment) },
-        });
+      for (const part of pendingParts) {
+        if (part.type === "text") {
+          if (part.text) segments.push({ type: "text", data: { text: part.text } });
+        } else if (part.type === "face") {
+          segments.push({
+            type: "image",
+            data: { file: part.sticker.file },
+          });
+        } else {
+          segments.push({
+            type: "image",
+            data: { file: await attachmentToBase64(part.attachment) },
+          });
+        }
       }
       const message = segments.length === 1 && segments[0].type === "text"
         ? text
@@ -1143,7 +1177,6 @@ export function App() {
       );
       if (messageId === null) throw new Error("OneBot rejected the message");
       setInputText("");
-      setAttachments([]);
       setReplyTarget(null);
       const sent: ChatMessage = {
         id: messageId,
@@ -1163,7 +1196,6 @@ export function App() {
         setMessages(messagesRef.current);
       }
       setMessageScrollOffset(0);
-      await Promise.all(pendingAttachments.map(removeAttachment));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       setStatusMsg(`Send failed · ${detail}`);
@@ -1201,13 +1233,13 @@ export function App() {
           messageGap,
           connected,
           statusMsg,
-          inputText,
+          composerParts,
+          composerCursor,
           replyTarget,
-          attachments,
           unreadTotal,
-          moveCursorToEndKey,
         }}
         onInputChange={handleInputChange}
+        onCursorChange={handleComposerCursorChange}
         onSubmit={handleSubmit}
         onPaste={handlePaste}
         resolveImageSource={resolveImageSource}
@@ -1286,8 +1318,10 @@ export function App() {
       </Box>
 
       <Composer
-        inputText={inputText}
+        parts={composerParts}
+        cursorOffset={composerCursor}
         onChange={handleInputChange}
+        onCursorChange={handleComposerCursorChange}
         onSubmit={handleSubmit}
         onPaste={handlePaste}
         helpMode={helpMode}
@@ -1300,9 +1334,7 @@ export function App() {
         connected={connected}
         unreadTotal={unreadTotal}
         termWidth={termWidth}
-        attachments={attachments}
         imageMode={imageMode}
-        moveCursorToEndKey={moveCursorToEndKey}
       />
     </Box>
   );

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useApp, useInput, useWindowSize } from "ink";
+import { emptyComposerParts } from "./composer-draft.js";
 import { useTerminalInfo } from "ink-picture";
 import type { ImageMode } from "./config.js";
 import type { SavedChatHistory } from "./history-file.js";
@@ -96,13 +97,13 @@ export function HistoryApp({
         messageGap,
         connected: true,
         statusMsg: "",
-        inputText: "",
+        composerParts: emptyComposerParts(),
+        composerCursor: 0,
         replyTarget: null,
-        attachments: [],
         unreadTotal: 0,
-        moveCursorToEndKey: 0,
       }}
       onInputChange={() => {}}
+      onCursorChange={() => {}}
       onSubmit={() => {}}
       onPaste={() => false}
     />

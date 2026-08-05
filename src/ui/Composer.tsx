@@ -1,6 +1,9 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { ImageAttachment } from "../clipboard-image.js";
+import {
+  composerDisplayText,
+  type ComposerPart,
+} from "../composer-draft.js";
 import type { ImageMode } from "../config.js";
 import type { Contact, ReplyTarget } from "../types.js";
 import { textWidth, truncateCells } from "../terminal-text.js";
@@ -8,10 +11,12 @@ import { COMPOSER_ROWS } from "./layout.js";
 import { PasteAwareTextInput } from "./PasteAwareTextInput.js";
 
 interface ComposerProps {
-  inputText: string;
-  onChange: (value: string) => void;
-  onSubmit: (value: string) => void;
-  onPaste: (value: string) => boolean;
+  parts: ComposerPart[];
+  cursorOffset: number;
+  onChange: (parts: ComposerPart[], cursorOffset: number) => void;
+  onCursorChange: (cursorOffset: number) => void;
+  onSubmit: () => void;
+  onPaste: (value: string, cursorOffset: number) => boolean;
   helpMode: boolean;
   modalMode: boolean;
   facesMode?: boolean;
@@ -22,14 +27,14 @@ interface ComposerProps {
   connected: boolean;
   unreadTotal: number;
   termWidth: number;
-  attachments: ImageAttachment[];
   imageMode: ImageMode;
-  moveCursorToEndKey: number;
 }
 
 export function Composer({
-  inputText,
+  parts,
+  cursorOffset,
   onChange,
+  onCursorChange,
   onSubmit,
   onPaste,
   helpMode,
@@ -42,9 +47,7 @@ export function Composer({
   connected,
   unreadTotal,
   termWidth,
-  attachments,
   imageMode,
-  moveCursorToEndKey,
 }: ComposerProps) {
   const divider = "─".repeat(Math.max(termWidth - 2, 4));
   const composerWidth = Math.max(termWidth - 2, 12);
@@ -80,16 +83,11 @@ export function Composer({
     : activeSession
     ? "Message current session"
     : "Use /session to choose a session";
-  const attachmentTokens = attachments
-    .map((_, index) => `[Image #${index + 1}]`)
-    .join(" ");
-  const attachmentPrefix = attachmentTokens ? `${attachmentTokens} ` : "";
-  const attachmentDisplayWidth = attachmentPrefix
-    ? Math.min(textWidth(attachmentPrefix), Math.max(Math.floor(composerWidth * 0.45), 10))
-    : 0;
-  const inputChromeWidth = 4 + attachmentDisplayWidth;
+  const inputDisplayText = composerDisplayText(parts);
+  const replyPrefix = replyTarget ? "[reply] " : "";
+  const inputChromeWidth = 4 + textWidth(replyPrefix);
   const inputVisibleWidth = Math.min(
-    Math.max(textWidth(inputText || composerPlaceholder) + 1, 1),
+    Math.max(textWidth(inputDisplayText || composerPlaceholder) + 1, 1),
     Math.max(composerWidth - inputChromeWidth - 2, 1)
   );
   const inputTailWidth = Math.max(
@@ -131,22 +129,21 @@ export function Composer({
           <Text color="white" backgroundColor={composerBg} bold>
             ›{" "}
           </Text>
-          {attachmentPrefix && (
-            <Box width={attachmentDisplayWidth} flexShrink={0} overflow="hidden">
-              <Text color="cyan" backgroundColor={composerBg} wrap="truncate-end">
-                {attachmentPrefix}
-              </Text>
-            </Box>
+          {replyPrefix && (
+            <Text color="cyan" backgroundColor={composerBg}>
+              {replyPrefix}
+            </Text>
           )}
           <Text color="white" backgroundColor={composerBg}>
             <PasteAwareTextInput
-              value={inputText}
+              parts={parts}
+              cursorOffset={cursorOffset}
               onChange={onChange}
+              onCursorChange={onCursorChange}
               onSubmit={onSubmit}
               onPaste={onPaste}
               focus={!helpMode && !facesMode && !forwardMode}
               placeholder={composerPlaceholder}
-              moveCursorToEndKey={moveCursorToEndKey}
             />
           </Text>
           <Text backgroundColor={composerBg}>

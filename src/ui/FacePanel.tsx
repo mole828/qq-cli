@@ -93,7 +93,7 @@ export function FacePanel({
       </Box>
       <Box height={1} overflow="hidden">
         <Text dimColor>
-          Esc close · arrows select · Enter send · r refresh
+          Esc close · arrows select · Enter add · r refresh
         </Text>
       </Box>
       <Box height={1} overflow="hidden">
@@ -138,7 +138,7 @@ export function FacePanel({
               <Text dimColor wrap="truncate-end">
                 {truncateCells(selected.file, Math.max(panelWidth - 34, 12))}
               </Text>
-              <Text dimColor>Enter sends this image segment.</Text>
+              <Text dimColor>Enter adds this face to the composer.</Text>
             </Box>
           </Box>
           <Box

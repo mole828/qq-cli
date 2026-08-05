@@ -1,44 +1,40 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Text, useInput, usePaste } from "ink";
+import {
+  composerLength,
+  composerUnits,
+  deleteComposerAt,
+  deleteComposerBefore,
+  insertComposerText,
+  type ComposerPart,
+} from "../composer-draft.js";
 
 interface PasteAwareTextInputProps {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit?: (value: string) => void;
-  onPaste?: (value: string) => boolean;
+  parts: ComposerPart[];
+  cursorOffset: number;
+  onChange: (parts: ComposerPart[], cursorOffset: number) => void;
+  onCursorChange: (cursorOffset: number) => void;
+  onSubmit?: () => void;
+  onPaste?: (value: string, cursorOffset: number) => boolean;
   focus?: boolean;
   placeholder?: string;
-  moveCursorToEndKey?: number;
 }
 
 export function PasteAwareTextInput({
-  value,
+  parts,
+  cursorOffset,
   onChange,
+  onCursorChange,
   onSubmit,
   onPaste,
   focus = true,
   placeholder = "",
-  moveCursorToEndKey = 0,
 }: PasteAwareTextInputProps) {
-  const [cursorOffset, setCursorOffset] = useState(value.length);
-
-  useEffect(() => {
-    setCursorOffset((current) => Math.min(current, value.length));
-  }, [value]);
-
-  useEffect(() => {
-    setCursorOffset(value.length);
-  }, [moveCursorToEndKey]);
-
   usePaste(
     (pastedText) => {
-      if (onPaste?.(pastedText)) return;
-      onChange(
-        value.slice(0, cursorOffset) +
-          pastedText +
-          value.slice(cursorOffset)
-      );
-      setCursorOffset(cursorOffset + pastedText.length);
+      if (onPaste?.(pastedText, cursorOffset)) return;
+      const next = insertComposerText(parts, cursorOffset, pastedText);
+      onChange(next.parts, next.cursor);
     },
     { isActive: focus }
   );
@@ -49,65 +45,69 @@ export function PasteAwareTextInput({
         key.upArrow ||
         key.downArrow ||
         key.tab ||
+        (key.ctrl && input.toLowerCase() === "f") ||
         (key.ctrl && input === "c") ||
         ((key.ctrl || key.meta || key.super) && input.toLowerCase() === "v")
       ) {
         return;
       }
       if (key.return) {
-        onSubmit?.(value);
+        onSubmit?.();
         return;
       }
       if (key.ctrl && input.toLowerCase() === "a") {
-        setCursorOffset(0);
+        onCursorChange(0);
         return;
       }
       if (key.ctrl && input.toLowerCase() === "e") {
-        setCursorOffset(value.length);
+        onCursorChange(composerLength(parts));
         return;
       }
       if (key.leftArrow) {
         if (key.meta || key.super) {
-          setCursorOffset(0);
+          onCursorChange(0);
         } else {
-          setCursorOffset((current) => Math.max(current - 1, 0));
+          onCursorChange(Math.max(cursorOffset - 1, 0));
         }
         return;
       }
       if (key.rightArrow) {
         if (key.meta || key.super) {
-          setCursorOffset(value.length);
+          onCursorChange(composerLength(parts));
         } else {
-          setCursorOffset((current) => Math.min(current + 1, value.length));
+          onCursorChange(Math.min(cursorOffset + 1, composerLength(parts)));
         }
         return;
       }
       if (key.home) {
-        setCursorOffset(0);
+        onCursorChange(0);
         return;
       }
       if (key.end) {
-        setCursorOffset(value.length);
+        onCursorChange(composerLength(parts));
         return;
       }
       if (key.backspace || key.delete) {
-        if (cursorOffset === 0) return;
-        onChange(
-          value.slice(0, cursorOffset - 1) + value.slice(cursorOffset)
-        );
-        setCursorOffset(cursorOffset - 1);
+        const next = key.backspace
+          ? deleteComposerBefore(parts, cursorOffset)
+          : deleteComposerAt(parts, cursorOffset);
+        if (next.parts !== parts || next.cursor !== cursorOffset) {
+          onChange(next.parts, next.cursor);
+        }
         return;
       }
 
-      onChange(
-        value.slice(0, cursorOffset) + input + value.slice(cursorOffset)
-      );
-      setCursorOffset(cursorOffset + input.length);
+      if (!input) return;
+      const next = insertComposerText(parts, cursorOffset, input);
+      onChange(next.parts, next.cursor);
     },
     { isActive: focus }
   );
 
-  if (!value) {
+  const units = composerUnits(parts);
+  const safeCursor = Math.min(Math.max(cursorOffset, 0), units.length);
+
+  if (units.length === 0) {
     return (
       <Text>
         {placeholder ? (
@@ -124,9 +124,15 @@ export function PasteAwareTextInput({
 
   return (
     <Text>
-      {value.slice(0, cursorOffset)}
-      <Text inverse>{value[cursorOffset] ?? " "}</Text>
-      {value.slice(cursorOffset + (cursorOffset < value.length ? 1 : 0))}
+      {units.slice(0, safeCursor).map((unit, index) => (
+        <Text key={`before-${index}`}>{unit.label}</Text>
+      ))}
+      <Text inverse>{units[safeCursor]?.label ?? " "}</Text>
+      {units
+        .slice(safeCursor + (safeCursor < units.length ? 1 : 0))
+        .map((unit, index) => (
+          <Text key={`after-${index}`}>{unit.label}</Text>
+        ))}
     </Text>
   );
 }
