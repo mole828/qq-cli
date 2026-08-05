@@ -86,3 +86,10 @@ export interface ChatMessage {
   group_id?: number;
   segments?: MessageSegment[];
 }
+
+export interface ReplyTarget {
+  sessionKey: string;
+  messageId: string;
+  senderName: string;
+  preview: string;
+}

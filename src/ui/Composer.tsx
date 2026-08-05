@@ -2,7 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { ImageAttachment } from "../clipboard-image.js";
 import type { ImageMode } from "../config.js";
-import type { Contact } from "../types.js";
+import type { Contact, ReplyTarget } from "../types.js";
 import { textWidth, truncateCells } from "../terminal-text.js";
 import { COMPOSER_ROWS } from "./layout.js";
 import { PasteAwareTextInput } from "./PasteAwareTextInput.js";
@@ -17,6 +17,7 @@ interface ComposerProps {
   forwardMode: boolean;
   activeSession: Contact | null;
   statusMsg: string;
+  replyTarget: ReplyTarget | null;
   connected: boolean;
   unreadTotal: number;
   termWidth: number;
@@ -35,6 +36,7 @@ export function Composer({
   forwardMode,
   activeSession,
   statusMsg,
+  replyTarget,
   connected,
   unreadTotal,
   termWidth,
@@ -58,7 +60,7 @@ export function Composer({
     workspace,
     Math.max(Math.min(Math.floor(termWidth * 0.45), 44), 12)
   );
-  const transientStatus = /loading|reloading|failed|unavailable|unknown|usage:|clipboard|attach|send/i.test(
+  const transientStatus = /loading|reloading|failed|unavailable|unknown|usage:|clipboard|attach|send|not found/i.test(
     statusMsg
   )
     ? statusMsg
@@ -89,6 +91,12 @@ export function Composer({
     0
   );
   const imageModeLabel = imageMode === "inline" ? "Images: inline" : "";
+  const replyLabel = replyTarget
+    ? truncateCells(
+        ` · ↳ #${replyTarget.messageId} ${replyTarget.senderName}: ${replyTarget.preview}`,
+        Math.max(Math.min(Math.floor(composerWidth * 0.55), 64), 16)
+      )
+    : "";
   const statusWidth = Math.max(composerWidth - textWidth(imageModeLabel) - 3, 1);
 
   return (
@@ -153,6 +161,11 @@ export function Composer({
             </Text>
             {unreadTotal > 0 && (
               <Text color="yellow"> · {unreadTotal} unread</Text>
+            )}
+            {replyLabel && (
+              <Text color="cyan" wrap="truncate-end">
+                {replyLabel}
+              </Text>
             )}
             {transientStatus && (
               <Text color="yellow" wrap="truncate-end">

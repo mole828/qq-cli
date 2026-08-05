@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { Box, useInput, useWindowSize, useApp } from "ink";
 import { useTerminalInfo } from "ink-picture";
-import type { Contact, ChatMessage, MessageSegment, ForwardNode } from "./types.js";
+import type {
+  Contact,
+  ChatMessage,
+  MessageSegment,
+  ForwardNode,
+  ReplyTarget,
+} from "./types.js";
 import { QQClient } from "./qq-client.js";
 import {
   attachmentToBase64,
@@ -16,6 +22,7 @@ import {
   getInitialMessageGap,
   parseImageMode,
 } from "./config.js";
+import { compactMessage } from "./message-format.js";
 import { Composer } from "./ui/Composer.js";
 import { ChatPage } from "./ui/ChatPage.js";
 import { EmptyState } from "./ui/EmptyState.js";
@@ -67,6 +74,7 @@ const COMPLETABLE_COMMANDS = [
   "/friends",
   "/images",
   "/forward",
+  "/reply",
   "/reload",
   "/help",
   "/exit",
@@ -112,6 +120,7 @@ export function App() {
   const [inputText, setInputText] = useState("");
   const [moveCursorToEndKey, setMoveCursorToEndKey] = useState(0);
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [helpMode, setHelpMode] = useState(false);
@@ -442,6 +451,7 @@ export function App() {
         closeModal();
       } else {
         setInputText("");
+        setReplyTarget(null);
         const discarded = attachments;
         setAttachments([]);
         for (const attachment of discarded) void removeAttachment(attachment);
@@ -646,25 +656,29 @@ export function App() {
 
     if (key.tab) {
       const activeCompletion = completionRef.current;
-      const forwardMatch = inputText.match(/^\/forward\s+(\S*)$/i);
-      const isForwardCompletion = Boolean(forwardMatch);
+      const messageCommandMatch = inputText.match(/^\/(forward|reply)\s+(\S*)$/i);
       const prefix = activeCompletion?.prefix ?? (
-        isForwardCompletion
-          ? `/forward ${forwardMatch?.[1] ?? ""}`
+        messageCommandMatch
+          ? `/${messageCommandMatch[1].toLowerCase()} ${messageCommandMatch[2]}`
           : inputText.toLowerCase()
       );
-      const forwardIdPrefix = prefix.slice("/forward ".length);
-      const matches = isForwardCompletion && activeSession
+      const messageCommand = prefix.match(/^\/(forward|reply)\s/i)?.[1].toLowerCase();
+      const messageIdPrefix = messageCommand
+        ? prefix.slice(messageCommand.length + 2)
+        : "";
+      const matches = messageCommand && activeSession
         ? [...new Set(
             messagesRef.current
-              .filter(
-                (message) =>
-                  belongsToSession(message, activeSession) &&
-                  message.segments?.some((segment) => segment.type === "forward") &&
-                  String(message.id).startsWith(forwardIdPrefix)
-              )
+              .filter((message) => {
+                if (!belongsToSession(message, activeSession)) return false;
+                if (messageCommand === "forward") {
+                  return message.segments?.some((segment) => segment.type === "forward") ?? false;
+                }
+                return !message.isMine;
+              })
+              .filter((message) => String(message.id).startsWith(messageIdPrefix))
               .sort((a, b) => b.timestamp - a.timestamp)
-              .map((message) => `/forward ${message.id}`)
+              .map((message) => `/${messageCommand} ${message.id}`)
           )]
         : !inputText.includes(" ") && inputText.startsWith("/")
         ? COMPLETABLE_COMMANDS.filter((command) => command.startsWith(prefix))
@@ -687,6 +701,7 @@ export function App() {
       const generation = sessionGenerationRef.current + 1;
       sessionGenerationRef.current = generation;
       messageScrollOffsetRef.current = 0;
+      setReplyTarget(null);
       setMessageScrollOffset(0);
       activeSessionRef.current = contact;
       setActiveSession(contact);
@@ -797,6 +812,43 @@ export function App() {
         setInputText("");
         break;
       }
+      case "/reply": {
+        const messageId = args.trim().replace(/^#/, "");
+        if (!messageId) {
+          setStatusMsg("Usage: /reply <message-id>");
+          setInputText("");
+          break;
+        }
+        if (!activeSession) {
+          setStatusMsg("No active session. Use /session <name>");
+          setInputText("");
+          break;
+        }
+
+        const target = messagesRef.current.find(
+          (message) =>
+            belongsToSession(message, activeSession) &&
+            String(message.id) === messageId
+        );
+        if (!target) {
+          setStatusMsg(`Reply target not found · #${messageId}`);
+          setInputText("");
+          break;
+        }
+
+        const preview = compactMessage(target, { imageMode })
+          .replace(/\s+/g, " ")
+          .trim() || "(empty)";
+        setReplyTarget({
+          sessionKey: sessionKey(activeSession),
+          messageId,
+          senderName: target.senderName || String(target.senderId),
+          preview,
+        });
+        setInputText("");
+        setStatusMsg(`Reply ready · #${messageId}`);
+        break;
+      }
       case "/forward": {
         const messageId = args.trim();
         if (!messageId) {
@@ -859,9 +911,17 @@ export function App() {
 
     const chatType = activeSession.type === "group" ? "group" : "private";
     const pendingAttachments = attachments;
+    const pendingReply =
+      replyTarget?.sessionKey === sessionKey(activeSession) ? replyTarget : null;
 
     try {
       const segments: MessageSegment[] = [];
+      if (pendingReply) {
+        segments.push({
+          type: "reply",
+          data: { id: pendingReply.messageId },
+        });
+      }
       if (text) segments.push({ type: "text", data: { text } });
       for (const attachment of pendingAttachments) {
         segments.push({
@@ -880,6 +940,7 @@ export function App() {
       if (messageId === null) throw new Error("OneBot rejected the message");
       setInputText("");
       setAttachments([]);
+      setReplyTarget(null);
       const sent: ChatMessage = {
         id: messageId,
         contactId: activeSession.id,
@@ -937,6 +998,7 @@ export function App() {
           connected,
           statusMsg,
           inputText,
+          replyTarget,
           attachments,
           unreadTotal,
           moveCursorToEndKey,
@@ -1017,6 +1079,7 @@ export function App() {
         forwardMode={Boolean(forwardView)}
         activeSession={activeSession}
         statusMsg={statusMsg}
+        replyTarget={replyTarget}
         connected={connected}
         unreadTotal={unreadTotal}
         termWidth={termWidth}

@@ -6,6 +6,7 @@ import { compactMessage, getImageReferences } from "../message-format.js";
 import {
   linkifyUrls,
   singleLine,
+  textWidth,
   truncateCells,
   wrapCells,
 } from "../terminal-text.js";
@@ -118,7 +119,11 @@ export function MessageRow({
     return clipRow(row, cropTop, visibleRows);
   }
 
-  const senderWidth = Math.max(Math.min(Math.floor(termWidth * 0.32), 28), 10);
+  const messageIdLabel = `#${String(msg.id)}`;
+  const senderWidth = Math.max(
+    Math.min(Math.floor(termWidth * 0.32), 28) - textWidth(messageIdLabel) - 1,
+    8
+  );
   const senderLabel = truncateCells(sender, senderWidth);
   const bodyWidth = Math.max(termWidth - 8, 16);
   const contentLines = wrapCells(
@@ -143,9 +148,10 @@ export function MessageRow({
           <Text dimColor>•</Text>
         </Box>
         <Text color="white" bold wrap="truncate-end">
-          {senderLabel}
+          <Text color="cyan" dimColor>{messageIdLabel}</Text>
+          <Text> {senderLabel}</Text>
+          <Text dimColor> · {time}</Text>
         </Text>
-        <Text dimColor> · {time}</Text>
       </Box>
       <Box flexDirection="column" paddingLeft={2} overflow="hidden">
         {renderLines.map((line, lineIndex) => (

@@ -97,6 +97,7 @@ export function HistoryApp({
         connected: true,
         statusMsg: "",
         inputText: "",
+        replyTarget: null,
         attachments: [],
         unreadTotal: 0,
         moveCursorToEndKey: 0,

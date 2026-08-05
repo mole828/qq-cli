@@ -3,7 +3,12 @@ import { Box, useWindowSize } from "ink";
 import { useTerminalInfo } from "ink-picture";
 import type { ImageAttachment } from "../clipboard-image.js";
 import type { ImageMode } from "../config.js";
-import type { ChatMessage, Contact, ImageSourceResolver } from "../types.js";
+import type {
+  ChatMessage,
+  Contact,
+  ImageSourceResolver,
+  ReplyTarget,
+} from "../types.js";
 import { COMPOSER_ROWS, TERMINAL_GUTTER_ROWS } from "./layout.js";
 import { Composer } from "./Composer.js";
 import {
@@ -22,6 +27,7 @@ export interface ChatPageState {
   connected: boolean;
   statusMsg: string;
   inputText: string;
+  replyTarget: ReplyTarget | null;
   attachments: ImageAttachment[];
   unreadTotal: number;
   moveCursorToEndKey: number;
@@ -99,6 +105,7 @@ export function ChatPage({
         forwardMode={false}
         activeSession={state.session}
         statusMsg={state.statusMsg}
+        replyTarget={state.replyTarget}
         connected={state.connected}
         unreadTotal={state.unreadTotal}
         termWidth={termWidth}
