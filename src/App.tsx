@@ -35,6 +35,11 @@ import {
   parseImageMode,
 } from "./config.js";
 import { compactMessage } from "./message-format.js";
+import {
+  cloneEchoContent,
+  ECHO_RECENT_MESSAGE_LIMIT,
+  findEchoCandidate,
+} from "./echo.js";
 import { Composer } from "./ui/Composer.js";
 import { ChatPage } from "./ui/ChatPage.js";
 import { EmptyState } from "./ui/EmptyState.js";
@@ -93,6 +98,7 @@ const COMPLETABLE_COMMANDS = [
   "/images",
   "/faces",
   "/stickers",
+  "/echo",
   "/forward",
   "/reply",
   "/reload",
@@ -1110,6 +1116,77 @@ export function App() {
     );
   }
 
+  function rememberSentMessage(
+    contact: Contact,
+    messageId: number | string,
+    content: string,
+    segments?: MessageSegment[]
+  ) {
+    const chatType = contact.type === "group" ? "group" : "private";
+    const sent: ChatMessage = {
+      id: messageId,
+      contactId: contact.id,
+      chatType,
+      senderId: selfId,
+      senderName: nickname || "Me",
+      content,
+      timestamp: Date.now(),
+      isMine: true,
+      group_id: contact.type === "group" ? contact.id : undefined,
+      segments,
+    };
+    const key = messageKey(sent);
+    if (!messagesRef.current.some((item) => messageKey(item) === key)) {
+      messagesRef.current = [...messagesRef.current, sent];
+      setMessages(messagesRef.current);
+    }
+    if (activeSessionRef.current && sessionKey(activeSessionRef.current) === sessionKey(contact)) {
+      setMessageScrollOffset(0);
+    }
+  }
+
+  async function handleEcho() {
+    const session = activeSession;
+    setInputText("");
+    if (!session || session.type !== "group") {
+      setStatusMsg("/echo only works in a group session");
+      return;
+    }
+
+    const candidate = findEchoCandidate(
+      messagesRef.current,
+      session.id,
+      ECHO_RECENT_MESSAGE_LIMIT
+    );
+    if (!candidate) {
+      setStatusMsg(`No repeated message in the last ${ECHO_RECENT_MESSAGE_LIMIT} group messages`);
+      return;
+    }
+
+    const content = cloneEchoContent(candidate.message);
+    const client = qqRef.current;
+    if (!content || !client) {
+      setStatusMsg("Repeated message cannot be echoed");
+      return;
+    }
+
+    setStatusMsg(`Echoing #${candidate.message.id}...`);
+    try {
+      const messageId = await client.sendMessage("group", session.id, content);
+      if (messageId === null) throw new Error("OneBot rejected the message");
+      rememberSentMessage(
+        session,
+        messageId,
+        candidate.message.content,
+        Array.isArray(content) ? content : undefined
+      );
+      setStatusMsg(`Echoed #${candidate.message.id} · ${candidate.count} matches`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setStatusMsg(`Echo failed · ${detail}`);
+    }
+  }
+
   // ---- commands ----
   function handleCommand(cmd: string) {
     const parts = cmd.split(/\s+/);
@@ -1175,6 +1252,15 @@ export function App() {
           break;
         }
         openFaces(normalized === "refresh" || normalized === "reload", true);
+        break;
+      }
+      case "/echo": {
+        if (args.trim()) {
+          setInputText("");
+          setStatusMsg("Usage: /echo");
+          break;
+        }
+        void handleEcho();
         break;
       }
       case "/reply": {
@@ -1319,24 +1405,7 @@ export function App() {
       if (messageId === null) throw new Error("OneBot rejected the message");
       setInputText("");
       setReplyTarget(null);
-      const sent: ChatMessage = {
-        id: messageId,
-        contactId: activeSession.id,
-        chatType,
-        senderId: selfId,
-        senderName: nickname || "Me",
-        content: text,
-        timestamp: Date.now(),
-        isMine: true,
-        group_id: activeSession.type === "group" ? activeSession.id : undefined,
-        segments,
-      };
-      const key = messageKey(sent);
-      if (!messagesRef.current.some((item) => messageKey(item) === key)) {
-        messagesRef.current = [...messagesRef.current, sent];
-        setMessages(messagesRef.current);
-      }
-      setMessageScrollOffset(0);
+      rememberSentMessage(activeSession, messageId, text, segments);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       setStatusMsg(`Send failed · ${detail}`);
