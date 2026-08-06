@@ -60,6 +60,14 @@ import {
 } from "./ui/MessageList.js";
 import { useImageMetadataVersion } from "./ui/ImagePreview.js";
 import { buildInlineMentionItems } from "./inline-insert.js";
+import {
+  findAudioPathCompletions,
+  formatAudioPathCompletion,
+  getAudioPathCompletionInput,
+  parseCommandArgs,
+  readAudioFile,
+  type AudioPathCompletionMatch,
+} from "./audio.js";
 
 function clamp(v: number, lo: number, hi: number) {
   return v < lo ? lo : v > hi ? hi : v;
@@ -95,6 +103,8 @@ const COMPLETABLE_COMMANDS = [
   "/contacts",
   "/groups",
   "/friends",
+  "/audio",
+  "/record",
   "/images",
   "/faces",
   "/stickers",
@@ -106,6 +116,15 @@ const COMPLETABLE_COMMANDS = [
   "/exit",
   "/quit",
 ] as const;
+
+type CompletionState =
+  | { kind: "standard"; prefix: string; index: number }
+  | {
+      kind: "audio-path";
+      prefix: string;
+      index: number;
+      matches: AudioPathCompletionMatch[];
+    };
 
 const RECENT_CONTACT_LIMIT = 100;
 
@@ -132,7 +151,7 @@ export function App() {
   const messageScrollOffsetRef = useRef(0);
   const composerPartsRef = useRef<ComposerPart[]>(emptyComposerParts());
   const composerCursorRef = useRef(0);
-  const completionRef = useRef<{ prefix: string; index: number } | null>(null);
+  const completionRef = useRef<CompletionState | null>(null);
   const faceRequestRef = useRef(0);
   const customFaceProviderRef = useRef(new CustomFaceProvider());
   const groupMemberRequestRef = useRef(0);
@@ -733,6 +752,59 @@ export function App() {
     setStatusMsg(`Mentioned @${item.label}`);
   }
 
+  async function sendAudio(rawPath: string) {
+    const session = activeSession;
+    const client = qqRef.current;
+    if (!session || !client) {
+      setStatusMsg("No active session. Use /session <name>");
+      return;
+    }
+
+    setStatusMsg(`Reading audio · ${rawPath}`);
+    try {
+      const audio = await readAudioFile(rawPath);
+      const chatType = session.type === "group" ? "group" : "private";
+      const messageId = await client.sendMessage(chatType, session.id, [
+        {
+          type: "record",
+          data: { file: audio.base64 },
+        },
+      ]);
+      if (messageId === null) throw new Error("OneBot rejected the message");
+
+      // Keep the local transcript compact and avoid retaining the Base64 body
+      // in React state after the request has completed.
+      rememberSentMessage(session, messageId, "", [
+        { type: "record", data: {} },
+      ]);
+      setStatusMsg(`Audio sent · ${audio.name}`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setStatusMsg(`Audio failed · ${detail}`);
+    }
+  }
+
+  async function completeAudioPath(input: string) {
+    const completionInput = getAudioPathCompletionInput(input);
+    if (!completionInput) return;
+
+    const matches = await findAudioPathCompletions(completionInput);
+    // A user may have continued typing while the directory was being read.
+    if (composerText(composerPartsRef.current) !== input) return;
+    if (matches.length === 0) {
+      setStatusMsg("No matching audio path");
+      return;
+    }
+
+    setInputText(formatAudioPathCompletion(completionInput, matches[0]));
+    completionRef.current = {
+      kind: "audio-path",
+      prefix: input,
+      index: 0,
+      matches,
+    };
+  }
+
   // ---- key bindings ----
   useInput((input, key) => {
     if (key.ctrl && (input === "q" || input === "c")) {
@@ -1014,6 +1086,26 @@ export function App() {
 
     if (key.tab) {
       const activeCompletion = completionRef.current;
+
+      if (!hasComposerMedia && activeCompletion?.kind === "audio-path") {
+        const completionInput = getAudioPathCompletionInput(activeCompletion.prefix);
+        if (!completionInput || activeCompletion.matches.length === 0) {
+          completionRef.current = null;
+          return;
+        }
+        const index = (activeCompletion.index + 1) % activeCompletion.matches.length;
+        setInputText(
+          formatAudioPathCompletion(completionInput, activeCompletion.matches[index])
+        );
+        completionRef.current = { ...activeCompletion, index };
+        return;
+      }
+
+      if (!hasComposerMedia && getAudioPathCompletionInput(inputText)) {
+        void completeAudioPath(inputText);
+        return;
+      }
+
       const messageCommandMatch = !hasComposerMedia
         ? inputText.match(/^\/(forward|reply)\s+(\S*)$/i)
         : null;
@@ -1048,8 +1140,8 @@ export function App() {
       const index = activeCompletion
         ? (activeCompletion.index + 1) % matches.length
         : 0;
-      completionRef.current = { prefix, index };
       setInputText(matches[index]);
+      completionRef.current = { kind: "standard", prefix, index };
       return;
     }
 
@@ -1189,7 +1281,14 @@ export function App() {
 
   // ---- commands ----
   function handleCommand(cmd: string) {
-    const parts = cmd.split(/\s+/);
+    completionRef.current = null;
+    const parts = parseCommandArgs(cmd);
+    if (!parts) {
+      setInputText("");
+      setStatusMsg("Unclosed quote in command");
+      return;
+    }
+    if (parts.length === 0) return;
     const command = parts[0].toLowerCase();
     const args = parts.slice(1).join(" ");
 
@@ -1229,6 +1328,18 @@ export function App() {
       case "/f": {
         const bases = contacts.filter((c) => c.type === "friend");
         openModal(bases, args.toLowerCase());
+        break;
+      }
+      case "/audio":
+      case "/record": {
+        if (parts.length !== 2 || !parts[1]) {
+          setStatusMsg("Usage: /audio <path>");
+          setInputText("");
+          break;
+        }
+        const path = parts[1];
+        setInputText("");
+        void sendAudio(path);
         break;
       }
       case "/images": {
