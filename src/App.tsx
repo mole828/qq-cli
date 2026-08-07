@@ -52,6 +52,7 @@ import {
   CustomFaceProvider,
   type StickerCapability,
 } from "./sticker-provider.js";
+import { CustomFaceCache } from "./face-cache.js";
 import {
   getMaxMessageScrollOffset,
   getMessageScrollRows,
@@ -126,6 +127,8 @@ type CompletionState =
       matches: AudioPathCompletionMatch[];
     };
 
+type FaceLoadPhase = "idle" | "clearing" | "requesting" | "caching";
+
 const RECENT_CONTACT_LIMIT = 100;
 
 export function App() {
@@ -154,6 +157,7 @@ export function App() {
   const completionRef = useRef<CompletionState | null>(null);
   const faceRequestRef = useRef(0);
   const customFaceProviderRef = useRef(new CustomFaceProvider());
+  const customFaceCacheRef = useRef(new CustomFaceCache());
   const groupMemberRequestRef = useRef(0);
   const groupMembersCacheRef = useRef(new Map<number, GroupMember[]>());
 
@@ -202,6 +206,8 @@ export function App() {
   const [customFaces, setCustomFaces] = useState<StickerItem[]>([]);
   const [faceCapability, setFaceCapability] = useState<StickerCapability>("unknown");
   const [facesLoading, setFacesLoading] = useState(false);
+  const [faceLoadPhase, setFaceLoadPhase] = useState<FaceLoadPhase>("idle");
+  const [faceCacheReady, setFaceCacheReady] = useState(false);
   const [faceHighlight, setFaceHighlight] = useState(0);
   const [faceScrollOffset, setFaceScrollOffset] = useState(0);
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
@@ -303,11 +309,18 @@ export function App() {
     setFaceCapability("unknown");
     setCustomFaces([]);
     setFacesLoading(false);
+    setFaceLoadPhase("idle");
+    setFaceCacheReady(false);
     setFaceHighlight(0);
     setFaceScrollOffset(0);
+    void customFaceCacheRef.current.clear();
     setGroupMembers([]);
     setGroupMembersLoading(false);
   }, [connected]);
+
+  useEffect(() => () => {
+    void customFaceCacheRef.current.clear();
+  }, []);
 
   useEffect(() => {
     setInlinePickerHighlight(0);
@@ -596,13 +609,46 @@ export function App() {
     const requestId = ++faceRequestRef.current;
     setFacesLoading(true);
     setFaceCapability("unknown");
-    setStatusMsg("Detecting custom-face capability...");
+    setFaceCacheReady(false);
+    setFaceLoadPhase(force ? "clearing" : "requesting");
+    setStatusMsg(
+      force
+        ? "Clearing face cache before loading the full index..."
+        : `Loading up to ${customFaceProviderRef.current.count} custom faces...`
+    );
 
     try {
+      if (force) {
+        await customFaceCacheRef.current.clear();
+        if (requestId !== faceRequestRef.current) return;
+      }
+
+      setFaceLoadPhase("requesting");
+      setStatusMsg(
+        `Fetching up to ${customFaceProviderRef.current.count} custom faces...`
+      );
       const items = await customFaceProviderRef.current.load(client);
       if (requestId !== faceRequestRef.current) return;
 
+      setFaceLoadPhase("caching");
+      setStatusMsg(`Writing ${items?.length ?? 0} faces to temporary cache...`);
+
+      let cacheReady = true;
+      try {
+        if (items) {
+          await customFaceCacheRef.current.save(
+            items,
+            customFaceProviderRef.current.action,
+            customFaceProviderRef.current.count
+          );
+        }
+      } catch {
+        cacheReady = false;
+      }
+      if (requestId !== faceRequestRef.current) return;
+
       setFacesLoading(false);
+      setFaceLoadPhase("idle");
       if (items === null) {
         setCustomFaces([]);
         setFaceCapability("unsupported");
@@ -612,18 +658,21 @@ export function App() {
         return;
       }
 
+      setFaceCacheReady(cacheReady);
       setCustomFaces(items);
       setFaceCapability("supported");
       setFaceHighlight(0);
       setFaceScrollOffset(0);
       setStatusMsg(
         items.length > 0
-          ? `${items.length} custom faces loaded`
+          ? `${items.length} custom faces loaded${cacheReady ? " · temp index ready" : " · temp cache unavailable"}`
           : "Custom face extension available · no faces returned"
       );
     } catch (error) {
       if (requestId !== faceRequestRef.current) return;
       setFacesLoading(false);
+      setFaceLoadPhase("idle");
+      setFaceCacheReady(false);
       setFaceCapability("unsupported");
       setCustomFaces([]);
       const detail = error instanceof Error ? error.message : String(error);
@@ -650,6 +699,7 @@ export function App() {
     faceRequestRef.current += 1;
     setFacesMode(false);
     setFacesLoading(false);
+    setFaceLoadPhase("idle");
   }
 
   function setFaceSelection(index: number) {
@@ -1613,6 +1663,9 @@ export function App() {
             items={customFaces}
             capability={faceCapability}
             loading={facesLoading}
+            loadPhase={faceLoadPhase}
+            requestedCount={customFaceProviderRef.current.count}
+            cacheReady={faceCacheReady}
             highlightIndex={faceHighlight}
             scrollOffset={faceScrollOffset}
             bodyRows={bodyRows}

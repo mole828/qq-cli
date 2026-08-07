@@ -79,6 +79,8 @@ ONEBOT_ACCESS_TOKEN=your-token npm run dev
 QQ_CLI_CUSTOM_FACE_ACTION=your_custom_face_action npm run dev
 ```
 
+自定义表情面板默认请求最多 500 个表情，并把全量表情索引写入系统临时目录；缩略图按当前页面按需加载。可以通过 `QQ_CLI_CUSTOM_FACE_COUNT` 调整请求数量；在 `/faces` 面板中执行 `/faces refresh` 会清理临时索引并重新加载。
+
 也可以组合使用：
 
 ```bash
@@ -154,7 +156,7 @@ NapCat 的配置、插件和 QQ 登录数据会分别保存在：
 | `/groups [关键词]` 或 `/g` | 搜索群聊 |
 | `/friends [关键词]` 或 `/f` | 搜索好友 |
 | `/images off\|inline` | 设置图片显示模式 |
-| `/faces [refresh]` | 探测并把自定义表情加入待发送内容；按 Esc 返回 composer |
+| `/faces [refresh]` | 加载并浏览自定义表情；`refresh` 清理临时索引后重载，按 Esc 返回 composer |
 | `/audio <path>` 或 `/record <path>` | 发送独立语音消息；支持 `~`、相对路径、`file://` 和 Tab 补全 |
 | `/echo` | 在当前群聊最近 10 条消息中找到最新的重复消息并发送 |
 | `/reply <msgId>` | 设置当前会话的回复目标；消息头会显示可引用的 `#msgId` |

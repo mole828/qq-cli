@@ -1,5 +1,8 @@
 import type { QQClient } from "./qq-client.js";
 import type { StickerItem } from "./types.js";
+import {
+  getConfiguredCustomFaceCount,
+} from "./face-config.js";
 
 export type StickerCapability = "unknown" | "supported" | "unsupported";
 
@@ -12,8 +15,9 @@ function configuredCustomFaceAction() {
 
 export class CustomFaceProvider {
   readonly action = configuredCustomFaceAction();
+  readonly count = getConfiguredCustomFaceCount();
 
-  async load(client: QQClient, count = 48): Promise<StickerItem[] | null> {
+  async load(client: QQClient, count = this.count): Promise<StickerItem[] | null> {
     const files = await client.getCustomFaces(count, this.action);
     if (files === null) return null;
 

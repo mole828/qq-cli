@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Box, Text } from "ink";
 import type { ImageSourceResolver, StickerItem } from "../types.js";
 import { truncateCells } from "../terminal-text.js";
@@ -10,6 +10,7 @@ const SELECTED_PREVIEW_ROWS = 5;
 const SLOT_HEIGHT = 5;
 const MIN_SLOT_WIDTH = 16;
 const MAX_SLOT_WIDTH = 26;
+const LOADING_FRAMES = ["|", "/", "-", "\\"];
 
 export interface FacePanelLayout {
   columns: number;
@@ -45,6 +46,9 @@ interface FacePanelProps {
   items: StickerItem[];
   capability: "unknown" | "supported" | "unsupported";
   loading: boolean;
+  loadPhase: "idle" | "clearing" | "requesting" | "caching";
+  requestedCount: number;
+  cacheReady: boolean;
   highlightIndex: number;
   scrollOffset: number;
   bodyRows: number;
@@ -57,6 +61,9 @@ export function FacePanel({
   items,
   capability,
   loading,
+  loadPhase,
+  requestedCount,
+  cacheReady,
   highlightIndex,
   scrollOffset,
   bodyRows,
@@ -64,12 +71,26 @@ export function FacePanel({
   statusMsg,
   resolveImageSource,
 }: FacePanelProps) {
+  const [loadingFrame, setLoadingFrame] = useState(0);
   const layout = getFacePanelLayout(bodyRows, termWidth);
   const pinnedSources = useMemo(
     () => items.map((item) => item.file),
     [items]
   );
   usePinnedImageSources(pinnedSources);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingFrame(0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setLoadingFrame((current) => (current + 1) % LOADING_FRAMES.length);
+    }, 120);
+    return () => clearInterval(timer);
+  }, [loading]);
+
   const selected = items[highlightIndex];
   const visibleItems = items.slice(
     scrollOffset,
@@ -88,9 +109,9 @@ export function FacePanel({
         <Text bold>• Faces · custom</Text>
         <Text dimColor wrap="truncate-end">
           {loading
-            ? "probing adapter…"
+            ? `${LOADING_FRAMES[loadingFrame]} loading…`
             : capability === "supported"
-            ? `${items.length} available`
+            ? `${items.length} indexed${cacheReady ? " · tmp" : ""}`
             : capability === "unsupported"
             ? "extension unavailable"
             : "not checked"}
@@ -111,8 +132,17 @@ export function FacePanel({
       </Box>
 
       {loading ? (
-        <Box paddingTop={1}>
-          <Text color="yellow">Checking fetch_custom_face…</Text>
+        <Box flexDirection="column" paddingTop={1}>
+          <Text color="yellow">
+            {LOADING_FRAMES[loadingFrame]} {loadPhase === "clearing"
+              ? "Clearing face cache…"
+              : loadPhase === "caching"
+              ? "Writing full face index to temporary storage…"
+              : "Loading full face index from adapter…"}
+          </Text>
+          <Text dimColor>
+            Up to {requestedCount} faces · thumbnails load as pages are viewed
+          </Text>
         </Box>
       ) : capability === "unsupported" ? (
         <Box flexDirection="column" paddingTop={1}>

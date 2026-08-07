@@ -1,5 +1,9 @@
 import { WebSocket } from "ws";
 import { logger } from "./logger.js";
+import {
+  CUSTOM_FACE_REQUEST_TIMEOUT_MS,
+  DEFAULT_CUSTOM_FACE_COUNT,
+} from "./face-config.js";
 import type {
   OneBotMessageEvent,
   OneBotApiRequest,
@@ -320,10 +324,10 @@ export class QQClient {
   }
 
   async getCustomFaces(
-    count = 48,
+    count = DEFAULT_CUSTOM_FACE_COUNT,
     action = "fetch_custom_face"
   ): Promise<string[] | null> {
-    const res = await this.callApi(action, { count }, 2500);
+    const res = await this.callApi(action, { count }, CUSTOM_FACE_REQUEST_TIMEOUT_MS);
     if (res.status !== "ok") {
       logger.info("Custom face capability unavailable", {
         action,
