@@ -25,6 +25,7 @@ export const IMAGE_PREVIEW_WIDTH = 28;
 export const IMAGE_PREVIEW_HEIGHT = 10;
 const IMAGE_REQUEST_TIMEOUT_MS = 15_000;
 const IMAGE_RETRY_DELAY_MS = 30_000;
+const MAX_IMAGE_CACHE_SIZE = 32;
 
 interface ImageDimensions {
   width: number;
@@ -39,6 +40,9 @@ interface PreparedImage {
 const imageMetadataCache = new Map<string, Promise<PreparedImage | null>>();
 const preparedImageCache = new Map<string, PreparedImage | null>();
 const imageFailureTime = new Map<string, number>();
+const activeImageSources = new Map<string, number>();
+const pinnedImageSources = new Map<string, number>();
+const pendingImageSources = new Set<string>();
 const metadataListeners = new Set<() => void>();
 let metadataVersion = 0;
 let imageTempDirPromise: Promise<string> | null = null;
@@ -52,6 +56,51 @@ function getImageTempDir() {
     });
   }
   return imageTempDirPromise;
+}
+
+function evictImageCache() {
+  if (imageMetadataCache.size <= MAX_IMAGE_CACHE_SIZE) return;
+
+  for (const candidate of imageMetadataCache.keys()) {
+    if (pendingImageSources.has(candidate)) continue;
+    if ((activeImageSources.get(candidate) ?? 0) > 0) continue;
+    if ((pinnedImageSources.get(candidate) ?? 0) > 0) continue;
+
+    imageMetadataCache.delete(candidate);
+    preparedImageCache.delete(candidate);
+    imageFailureTime.delete(candidate);
+    if (imageMetadataCache.size <= MAX_IMAGE_CACHE_SIZE) return;
+  }
+}
+
+function retainImageSource(source: string) {
+  activeImageSources.set(source, (activeImageSources.get(source) ?? 0) + 1);
+  return () => {
+    const count = activeImageSources.get(source) ?? 0;
+    if (count <= 1) activeImageSources.delete(source);
+    else activeImageSources.set(source, count - 1);
+    evictImageCache();
+  };
+}
+
+function retainPinnedImageSource(source: string) {
+  pinnedImageSources.set(source, (pinnedImageSources.get(source) ?? 0) + 1);
+  return () => {
+    const count = pinnedImageSources.get(source) ?? 0;
+    if (count <= 1) pinnedImageSources.delete(source);
+    else pinnedImageSources.set(source, count - 1);
+    evictImageCache();
+  };
+}
+
+export function usePinnedImageSources(sources: readonly string[]) {
+  useEffect(() => {
+    const uniqueSources = new Set(sources);
+    const release = [...uniqueSources].map(retainPinnedImageSource);
+    return () => {
+      for (const releaseSource of release) releaseSource();
+    };
+  }, [sources]);
 }
 
 function publishPreparedImage(source: string, image: PreparedImage | null) {
@@ -82,6 +131,7 @@ function prepareImage(
 ) {
   let pending = imageMetadataCache.get(source);
   if (!pending) {
+    pendingImageSources.add(source);
     pending = loadImageWithFallback(source, file, resolveSource)
       .then(async (loadedSource) => ({
         image: await Jimp.read(loadedSource),
@@ -108,17 +158,27 @@ function prepareImage(
         return null;
       })
       .then((image) => {
-        publishPreparedImage(source, image);
+        // An evicted or superseded request must not overwrite a newer result.
+        if (imageMetadataCache.get(source) === pending) {
+          publishPreparedImage(source, image);
+        }
         return image;
       });
     imageMetadataCache.set(source, pending);
-
-    if (imageMetadataCache.size > 32) {
-      const oldestSource = imageMetadataCache.keys().next().value!;
-      imageMetadataCache.delete(oldestSource);
-      preparedImageCache.delete(oldestSource);
-      imageFailureTime.delete(oldestSource);
-    }
+    void pending.then(
+      () => {
+        if (imageMetadataCache.get(source) === pending) {
+          pendingImageSources.delete(source);
+        }
+        evictImageCache();
+      },
+      () => {
+        if (imageMetadataCache.get(source) === pending) {
+          pendingImageSources.delete(source);
+        }
+        evictImageCache();
+      }
+    );
   }
 
   return pending;
@@ -202,25 +262,53 @@ function usePreparedImage(
   file?: string,
   resolveSource?: ImageSourceResolver
 ) {
-  const version = useImageMetadataVersion();
+  // The store subscription rerenders this component when metadata arrives.
+  // Loading must stay independent of that version, otherwise every completed
+  // preview can restart another request while the cache is being populated.
+  useImageMetadataVersion();
+
+  useEffect(() => retainImageSource(source), [source]);
 
   useEffect(() => {
-    if (!preparedImageCache.has(source)) {
-      void prepareImage(source, file, resolveSource);
-      return;
+    let disposed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function scheduleRetry() {
+      if (disposed || retryTimer || imageFailureTime.get(source) === undefined) {
+        return;
+      }
+
+      const failedAt = imageFailureTime.get(source)!;
+      const retryIn = Math.max(
+        IMAGE_RETRY_DELAY_MS - (Date.now() - failedAt),
+        0
+      );
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        if (disposed || imageFailureTime.get(source) === undefined) return;
+
+        imageMetadataCache.delete(source);
+        preparedImageCache.delete(source);
+        imageFailureTime.delete(source);
+        void prepareImage(source, file, resolveSource).then((image) => {
+          if (image === null) scheduleRetry();
+        });
+      }, retryIn);
     }
 
-    const failedAt = imageFailureTime.get(source);
-    if (failedAt === undefined) return;
-    const retryIn = Math.max(IMAGE_RETRY_DELAY_MS - (Date.now() - failedAt), 0);
-    const timeout = setTimeout(() => {
-      imageMetadataCache.delete(source);
-      preparedImageCache.delete(source);
-      imageFailureTime.delete(source);
-      void prepareImage(source, file, resolveSource);
-    }, retryIn);
-    return () => clearTimeout(timeout);
-  }, [source, file, resolveSource, version]);
+    if (!preparedImageCache.has(source)) {
+      void prepareImage(source, file, resolveSource).then((image) => {
+        if (image === null) scheduleRetry();
+      });
+    } else {
+      scheduleRetry();
+    }
+
+    return () => {
+      disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [source, file, resolveSource]);
 
   return preparedImageCache.get(source) ?? null;
 }

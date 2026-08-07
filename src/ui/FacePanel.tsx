@@ -1,8 +1,8 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Box, Text } from "ink";
 import type { ImageSourceResolver, StickerItem } from "../types.js";
 import { truncateCells } from "../terminal-text.js";
-import { ImagePreview } from "./ImagePreview.js";
+import { ImagePreview, usePinnedImageSources } from "./ImagePreview.js";
 
 const PANEL_PADDING = 2;
 const HEADER_ROWS = 3;
@@ -65,6 +65,11 @@ export function FacePanel({
   resolveImageSource,
 }: FacePanelProps) {
   const layout = getFacePanelLayout(bodyRows, termWidth);
+  const pinnedSources = useMemo(
+    () => items.map((item) => item.file),
+    [items]
+  );
+  usePinnedImageSources(pinnedSources);
   const selected = items[highlightIndex];
   const visibleItems = items.slice(
     scrollOffset,
