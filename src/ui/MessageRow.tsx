@@ -35,6 +35,8 @@ interface MessageRowProps {
   visibleRows?: number;
   clipped?: boolean;
   replyLookup?: ReadonlyMap<string, ChatMessage>;
+  selected?: boolean;
+  forwardSegmentId?: boolean;
   resolveImageSource?: ImageSourceResolver;
 }
 
@@ -51,15 +53,26 @@ export function MessageRow({
   visibleRows,
   clipped = false,
   replyLookup,
+  selected = false,
+  forwardSegmentId = false,
   resolveImageSource,
 }: MessageRowProps) {
   const isMine = msg.senderId === selfId;
   const time = formatTime(msg.timestamp);
   const sender = isMine ? "you" : msg.senderName || String(msg.senderId);
   const rowWidth = Math.max(termWidth - 2, 12);
-  const rawContent = compactMessage(msg, { imageMode, replyLookup });
+  const rawContent = compactMessage(msg, {
+    imageMode,
+    replyLookup,
+    forwardSegmentId,
+  });
   const linkedContent =
-    compactMessage(msg, { imageMode, terminalLinks: true, replyLookup }) || "(empty)";
+    compactMessage(msg, {
+      imageMode,
+      terminalLinks: true,
+      replyLookup,
+      forwardSegmentId,
+    }) || "(empty)";
   const imageReferences =
     imageMode === "inline" && renderInlineImage ? getImageReferences(msg) : [];
 
@@ -145,10 +158,14 @@ export function MessageRow({
     >
       <Box flexDirection="row" height={1} overflow="hidden">
         <Box width={2} flexShrink={0}>
-          <Text dimColor>•</Text>
+          <Text color={selected ? "yellow" : undefined} dimColor={!selected}>
+            {selected ? "▸" : "•"}
+          </Text>
         </Box>
-        <Text color="white" bold wrap="truncate-end">
-          <Text color="cyan" dimColor>{messageIdLabel}</Text>
+        <Text color={selected ? "yellow" : "white"} bold wrap="truncate-end">
+          <Text color={selected ? "yellow" : "cyan"} dimColor={!selected}>
+            {messageIdLabel}
+          </Text>
           <Text> {senderLabel}</Text>
           <Text dimColor> · {time}</Text>
         </Text>

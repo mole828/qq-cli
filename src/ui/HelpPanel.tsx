@@ -11,6 +11,7 @@ export const HELP_ROWS = [
   ["/faces [refresh]", "Add custom faces to the composer when supported"],
   ["/echo", "Repeat the latest duplicate message in a group"],
   ["/forward <message-id>", "Inspect a merged forward message"],
+  ["Tab · Enter", "Select and open nested forward nodes"],
   ["/reply <msgId>", "Set the current session's reply target"],
   ["/reload", "Reload account info and session index"],
   ["/help", "Show this command panel"],

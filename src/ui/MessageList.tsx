@@ -46,6 +46,8 @@ interface MessageListProps {
   imageMode: ImageMode;
   scrollOffset: number;
   messageGap: number;
+  selectedMessageId?: string | null;
+  forwardSegmentId?: boolean;
   resolveImageSource?: ImageSourceResolver;
 }
 
@@ -58,12 +60,13 @@ function getMessageRowCost(
   imageMode: ImageMode,
   canRenderInlineImages: boolean,
   messageGap: number,
-  replyLookup?: ReadonlyMap<string, ChatMessage>
+  replyLookup?: ReadonlyMap<string, ChatMessage>,
+  forwardSegmentId = false
 ) {
   const isMine = msg.senderId === selfId || msg.isMine;
   const textWidth = Math.max(termWidth - (isMine ? 6 : 8), 16);
   const lineCount = wrapCells(
-    compactMessage(msg, { imageMode, replyLookup }) || "(empty)",
+    compactMessage(msg, { imageMode, replyLookup, forwardSegmentId }) || "(empty)",
     textWidth,
     MAX_BODY_LINES
   ).length;
@@ -84,7 +87,8 @@ export function getMessageScrollRows(
   cellHeight: number,
   imageMode: ImageMode,
   messageGap: number,
-  messages: ChatMessage[] = [msg]
+  messages: ChatMessage[] = [msg],
+  forwardSegmentId = false
 ) {
   return getMessageRowCost(
     msg,
@@ -95,7 +99,8 @@ export function getMessageScrollRows(
     imageMode,
     bodyRows >= INLINE_IMAGE_ROW_COST,
     messageGap,
-    buildReplyLookup(messages)
+    buildReplyLookup(messages),
+    forwardSegmentId
   );
 }
 
@@ -138,7 +143,8 @@ export function getMaxMessageScrollOffset(
   cellWidth: number,
   cellHeight: number,
   imageMode: ImageMode,
-  messageGap: number
+  messageGap: number,
+  forwardSegmentId = false
 ) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
   const replyLookup = buildReplyLookup(messages);
@@ -154,12 +160,65 @@ export function getMaxMessageScrollOffset(
         imageMode,
         canRenderInlineImages,
         messageGap,
-        replyLookup
+        replyLookup,
+        forwardSegmentId
       ),
     0
   );
 
   return Math.max(totalRows - bodyRows, 0);
+}
+
+export function getMessageScrollOffsetForIndex(
+  messages: ChatMessage[],
+  bodyRows: number,
+  selfId: number,
+  termWidth: number,
+  cellWidth: number,
+  cellHeight: number,
+  imageMode: ImageMode,
+  messageGap: number,
+  currentOffset: number,
+  index: number,
+  forwardSegmentId = false
+) {
+  if (messages.length === 0 || index < 0 || index >= messages.length) {
+    return 0;
+  }
+
+  const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
+  const replyLookup = buildReplyLookup(messages);
+  const rowCosts = messages.map((msg) =>
+    getMessageRowCost(
+      msg,
+      selfId,
+      termWidth,
+      cellWidth,
+      cellHeight,
+      imageMode,
+      canRenderInlineImages,
+      messageGap,
+      replyLookup,
+      forwardSegmentId
+    )
+  );
+  const totalRows = rowCosts.reduce((sum, rows) => sum + rows, 0);
+  const maxOffset = Math.max(totalRows - bodyRows, 0);
+  const offset = clampOffset(currentOffset, maxOffset);
+  const rowStart = rowCosts
+    .slice(0, index)
+    .reduce((sum, rows) => sum + rows, 0);
+  const rowEnd = rowStart + rowCosts[index];
+  const viewportStart = Math.max(totalRows - bodyRows - offset, 0);
+  const viewportEnd = viewportStart + bodyRows;
+
+  if (rowStart < viewportStart) {
+    return clampOffset(offset + (viewportStart - rowStart), maxOffset);
+  }
+  if (rowEnd > viewportEnd) {
+    return clampOffset(offset - (rowEnd - viewportEnd), maxOffset);
+  }
+  return offset;
 }
 
 function getVisibleMessages(
@@ -172,7 +231,8 @@ function getVisibleMessages(
   imageMode: ImageMode,
   canRenderInlineImages: boolean,
   messageGap: number,
-  scrollOffset: number
+  scrollOffset: number,
+  forwardSegmentId = false
 ) {
   const replyLookup = buildReplyLookup(messages);
   const rowCosts = messages.map((msg) =>
@@ -185,7 +245,8 @@ function getVisibleMessages(
       imageMode,
       canRenderInlineImages,
       messageGap,
-      replyLookup
+      replyLookup,
+      forwardSegmentId
     )
   );
   const totalRows = rowCosts.reduce((sum, rows) => sum + rows, 0);
@@ -227,6 +288,8 @@ export function MessageList({
   imageMode,
   messageGap,
   scrollOffset,
+  selectedMessageId,
+  forwardSegmentId = false,
   resolveImageSource,
 }: MessageListProps) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
@@ -241,7 +304,8 @@ export function MessageList({
     imageMode,
     canRenderInlineImages,
     messageGap,
-    scrollOffset
+    scrollOffset,
+    forwardSegmentId
   );
 
   return (
@@ -266,6 +330,8 @@ export function MessageList({
           visibleRows={visibleRows}
           clipped={clipped}
           replyLookup={replyLookup}
+          selected={selectedMessageId === String(msg.id)}
+          forwardSegmentId={forwardSegmentId}
           resolveImageSource={resolveImageSource}
         />
       ))}

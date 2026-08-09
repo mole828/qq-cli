@@ -34,7 +34,11 @@ import {
   getInitialMessageGap,
   parseImageMode,
 } from "./config.js";
-import { compactMessage } from "./message-format.js";
+import {
+  compactMessage,
+  getForwardIdsFromText,
+  getForwardSegmentId,
+} from "./message-format.js";
 import {
   cloneEchoContent,
   ECHO_RECENT_MESSAGE_LIMIT,
@@ -44,7 +48,12 @@ import { Composer } from "./ui/Composer.js";
 import { ChatPage } from "./ui/ChatPage.js";
 import { EmptyState } from "./ui/EmptyState.js";
 import { HelpPanel } from "./ui/HelpPanel.js";
-import { ForwardPanel, getForwardPanelMaxOffset } from "./ui/ForwardPanel.js";
+import {
+  ForwardPanel,
+  getForwardPanelMaxOffset,
+  getForwardPanelScrollOffset,
+  getForwardTargets,
+} from "./ui/ForwardPanel.js";
 import { COMPOSER_ROWS, getComposerRows, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
 import { SessionPicker } from "./ui/SessionPicker.js";
 import { FacePanel, getFacePanelLayout } from "./ui/FacePanel.js";
@@ -99,6 +108,18 @@ function belongsToSession(message: ChatMessage, contact: Contact) {
   );
 }
 
+function getFirstForwardId(segments: MessageSegment[] | undefined) {
+  for (const segment of segments || []) {
+    const structuredId = getForwardSegmentId(segment);
+    if (structuredId) return structuredId;
+    if (segment.type === "text" && typeof segment.data.text === "string") {
+      const textId = getForwardIdsFromText(segment.data.text)[0];
+      if (textId) return textId;
+    }
+  }
+  return null;
+}
+
 const COMPLETABLE_COMMANDS = [
   "/session",
   "/contacts",
@@ -130,6 +151,14 @@ type CompletionState =
 type FaceLoadPhase = "idle" | "clearing" | "requesting" | "caching";
 
 const RECENT_CONTACT_LIMIT = 100;
+const MAX_FORWARD_DEPTH = 8;
+
+interface ForwardView {
+  id: string;
+  nodes: ForwardNode[] | null;
+  loading: boolean;
+  requestId: number;
+}
 
 export function App() {
   const { columns, rows } = useWindowSize();
@@ -160,6 +189,7 @@ export function App() {
   const customFaceCacheRef = useRef(new CustomFaceCache());
   const groupMemberRequestRef = useRef(0);
   const groupMembersCacheRef = useRef(new Map<number, GroupMember[]>());
+  const forwardRequestRef = useRef(0);
 
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(0);
@@ -177,12 +207,9 @@ export function App() {
   const [statusMsg, setStatusMsg] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [helpMode, setHelpMode] = useState(false);
-  const [forwardView, setForwardView] = useState<{
-    id: string;
-    nodes: ForwardNode[] | null;
-    loading: boolean;
-  } | null>(null);
+  const [forwardStack, setForwardStack] = useState<ForwardView[]>([]);
   const [forwardScrollOffset, setForwardScrollOffset] = useState(0);
+  const [forwardSelectionIndex, setForwardSelectionIndex] = useState<number | null>(null);
   const [imageMode, setImageMode] = useState(() => getInitialImageMode());
   const [messageGap] = useState(() => getInitialMessageGap());
   const messageViewportRef = useRef({
@@ -214,6 +241,8 @@ export function App() {
   const [groupMembersLoading, setGroupMembersLoading] = useState(false);
   const [inlinePickerHighlight, setInlinePickerHighlight] = useState(0);
   const [inlinePickerDismissed, setInlinePickerDismissed] = useState<string | null>(null);
+
+  const forwardView = forwardStack[forwardStack.length - 1] ?? null;
 
   const inputText = composerText(composerParts);
   const hasComposerMedia = composerParts.some((part) => part.type !== "text");
@@ -575,11 +604,79 @@ export function App() {
     }
   }
 
+  function closeForward() {
+    setForwardStack([]);
+    setForwardScrollOffset(0);
+    setForwardSelectionIndex(null);
+  }
+
+  function openForwardFrame(
+    rawId: string,
+    append: boolean,
+    inlineContent?: unknown
+  ) {
+    const id = rawId.trim();
+    if (!id) {
+      setStatusMsg("Forward ID is empty");
+      return;
+    }
+
+    const client = qqRef.current;
+    if (!client) {
+      setStatusMsg("Waiting for OneBot connection");
+      return;
+    }
+
+    const base = append ? forwardStack : [];
+    if (append && base.some((frame) => frame.id === id)) {
+      setStatusMsg(`Forward cycle blocked · ${id}`);
+      return;
+    }
+    if (append && base.length >= MAX_FORWARD_DEPTH) {
+      setStatusMsg(`Forward depth limit reached · ${MAX_FORWARD_DEPTH}`);
+      return;
+    }
+
+    const requestId = ++forwardRequestRef.current;
+    setForwardStack([
+      ...base,
+      { id, nodes: null, loading: true, requestId },
+    ]);
+    setForwardScrollOffset(0);
+    setForwardSelectionIndex(null);
+
+    void client.getForwardMessage(id, inlineContent).then((nodes) => {
+      setForwardStack((current) => {
+        const last = current[current.length - 1];
+        if (!last || last.id !== id || last.requestId !== requestId) {
+          return current;
+        }
+        return [
+          ...current.slice(0, -1),
+          { ...last, nodes, loading: false },
+        ];
+      });
+    }).catch((error: unknown) => {
+      setForwardStack((current) => {
+        const last = current[current.length - 1];
+        if (!last || last.id !== id || last.requestId !== requestId) {
+          return current;
+        }
+        return [
+          ...current.slice(0, -1),
+          { ...last, nodes: null, loading: false },
+        ];
+      });
+      const detail = error instanceof Error ? error.message : String(error);
+      setStatusMsg(`Forward unavailable · ${detail}`);
+    });
+  }
+
   // ---- modal helpers ----
   function openModal(baseList: Contact[], preFill: string) {
     const snapshot = snapshotContacts(baseList);
     setHelpMode(false);
-    setForwardView(null);
+    closeForward();
     setModalBaseList(snapshot);
     setModalMode(true);
     setModalHighlightKey(snapshot[0] ? sessionKey(snapshot[0]) : null);
@@ -682,7 +779,7 @@ export function App() {
 
   function openFaces(force = false, clearDraft = false) {
     setHelpMode(false);
-    setForwardView(null);
+    closeForward();
     setModalMode(false);
     setFacesMode(true);
     if (clearDraft) setInputText("");
@@ -864,8 +961,13 @@ export function App() {
 
     if (key.escape) {
       if (forwardView) {
-        setForwardView(null);
+        if (forwardStack.length > 1) {
+          setForwardStack((current) => current.slice(0, -1));
+        } else {
+          closeForward();
+        }
         setForwardScrollOffset(0);
+        setForwardSelectionIndex(null);
       } else if (helpMode) {
         setHelpMode(false);
       } else if (facesMode) {
@@ -912,6 +1014,45 @@ export function App() {
       if (key.tab && key.shift) {
         setImageMode((current) => current === "off" ? "inline" : "off");
         setForwardScrollOffset(0);
+        return;
+      }
+      const targets = getForwardTargets(forwardView.nodes);
+      if (key.tab) {
+        if (targets.length === 0) {
+          setStatusMsg("No nested forward in this view");
+          return;
+        }
+        const nextIndex = forwardSelectionIndex === null
+          ? 0
+          : (forwardSelectionIndex + 1) % targets.length;
+        setForwardSelectionIndex(nextIndex);
+        setStatusMsg(`Nested forward selected · ${targets[nextIndex].id}`);
+        setForwardScrollOffset((offset) =>
+          getForwardPanelScrollOffset(
+            forwardView.id,
+            forwardView.nodes,
+            targets[nextIndex].nodeIndex,
+            bodyRows,
+            termWidth,
+            terminalInfo.cellWidth,
+            terminalInfo.cellHeight,
+            imageMode,
+            offset
+          )
+        );
+        return;
+      }
+      if (key.return) {
+        if (targets.length === 0) {
+          setStatusMsg("No nested forward in this view");
+          return;
+        }
+        const target = targets[
+          forwardSelectionIndex === null
+            ? 0
+            : Math.min(forwardSelectionIndex, targets.length - 1)
+        ];
+        openForwardFrame(target.id, true, target.inlineContent);
         return;
       }
       const maxOffset = getForwardPanelMaxOffset(
@@ -1174,7 +1315,7 @@ export function App() {
               .filter((message) => {
                 if (!belongsToSession(message, activeSession)) return false;
                 if (messageCommand === "forward") {
-                  return message.segments?.some((segment) => segment.type === "forward") ?? false;
+                  return Boolean(getFirstForwardId(message.segments));
                 }
                 return !message.isMine;
               })
@@ -1462,7 +1603,7 @@ export function App() {
         break;
       }
       case "/forward": {
-        const messageId = args.trim();
+        const messageId = args.trim().replace(/^#/, "");
         if (!messageId) {
           setStatusMsg("Usage: /forward <message-id>");
           setInputText("");
@@ -1471,24 +1612,16 @@ export function App() {
         const source = messagesRef.current.find(
           (message) =>
             String(message.id) === messageId &&
-            message.segments?.some((segment) => segment.type === "forward")
+            Boolean(getFirstForwardId(message.segments))
         );
-        const segment = source?.segments?.find((item) => item.type === "forward");
-        const forwardId = segment?.data.id;
-        if (typeof forwardId !== "string" && typeof forwardId !== "number") {
+        const forwardId = getFirstForwardId(source?.segments);
+        if (!forwardId) {
           setStatusMsg(`Forward not found · ${messageId}`);
           setInputText("");
           break;
         }
-        const id = String(forwardId);
         setInputText("");
-        setForwardScrollOffset(0);
-        setForwardView({ id, nodes: null, loading: true });
-        void qqRef.current?.getForwardMessage(id).then((nodes) => {
-          setForwardView((current) =>
-            current?.id === id ? { id, nodes, loading: false } : current
-          );
-        });
+        openForwardFrame(forwardId, false);
         break;
       }
       case "/reload":
@@ -1637,6 +1770,12 @@ export function App() {
             nodes={forwardView.nodes}
             loading={forwardView.loading}
             scrollOffset={forwardScrollOffset}
+            selectedNodeIndex={
+              forwardSelectionIndex === null
+                ? null
+                : getForwardTargets(forwardView.nodes)[forwardSelectionIndex]?.nodeIndex ?? null
+            }
+            depth={forwardStack.length}
             bodyRows={bodyRows}
             termWidth={termWidth}
             cellWidth={terminalInfo.cellWidth}

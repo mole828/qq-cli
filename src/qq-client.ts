@@ -39,6 +39,78 @@ function parseWsUrl(rawUrl: string): {
   return { url: urlStr, authHeader };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function parseMessageSegments(content: unknown): MessageSegment[] {
+  if (Array.isArray(content)) {
+    return content.filter((part): part is MessageSegment =>
+      isRecord(part) &&
+      typeof part.type === "string" &&
+      isRecord(part.data)
+    );
+  }
+  if (typeof content === "string") {
+    return [{ type: "text", data: { text: content } }];
+  }
+  return [];
+}
+
+function parseForwardNode(item: unknown): ForwardNode | null {
+  if (!isRecord(item)) return null;
+
+  const node = item.type === "node" && isRecord(item.data)
+    ? item.data
+    : item;
+  const content = node.content ?? node.message;
+  const isNode = item.type === "node" ||
+    "content" in node ||
+    "message" in node ||
+    "user_id" in node ||
+    "uin" in node ||
+    "nickname" in node ||
+    "name" in node;
+  if (!isNode) return null;
+
+  const sender = isRecord(node.sender) ? node.sender : {};
+  const rawSenderId = node.user_id ?? node.uin ?? sender.user_id ?? sender.uin;
+  const senderId = rawSenderId === undefined ? undefined : String(rawSenderId);
+  const rawSenderName = node.nickname ?? node.name ?? sender.nickname;
+  const timestamp = Number(node.time);
+
+  return {
+    senderId,
+    senderName: typeof rawSenderName === "string"
+      ? rawSenderName
+      : senderId || "unknown",
+    timestamp: Number.isFinite(timestamp) ? timestamp * 1000 : undefined,
+    segments: parseMessageSegments(content),
+  };
+}
+
+function parseForwardNodes(raw: unknown, allowInlineMessage = false): ForwardNode[] | null {
+  if (typeof raw === "string") {
+    return allowInlineMessage
+      ? [{ senderName: "unknown", segments: parseMessageSegments(raw) }]
+      : null;
+  }
+  if (!Array.isArray(raw)) return null;
+  if (raw.length === 0) return [];
+
+  const nodes = raw.flatMap((item) => {
+    const node = parseForwardNode(item);
+    return node ? [node] : [];
+  });
+  if (nodes.length > 0) return nodes;
+  if (!allowInlineMessage) return null;
+
+  const segments = parseMessageSegments(raw);
+  return segments.length > 0
+    ? [{ senderName: "unknown", segments }]
+    : null;
+}
+
 export class QQClient {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -363,7 +435,18 @@ export class QQClient {
     return files;
   }
 
-  async getForwardMessage(id: string): Promise<ForwardNode[] | null> {
+  async getForwardMessage(id: string, inlineContent?: unknown): Promise<ForwardNode[] | null> {
+    if (inlineContent !== undefined) {
+      const inlineNodes = parseForwardNodes(inlineContent, true);
+      if (inlineNodes) {
+        logger.info("Inline forward message loaded", {
+          id,
+          count: inlineNodes.length,
+        });
+        return inlineNodes;
+      }
+    }
+
     // OneBot v11 names this parameter `id`; NapCat uses `message_id`.
     // Both implementations ignore unknown extra parameters.
     const res = await this.callApi("get_forward_msg", { id, message_id: id });
@@ -383,39 +466,7 @@ export class QQClient {
       return null;
     }
 
-    const nodes = rawNodes.flatMap((item): ForwardNode[] => {
-      if (!item || typeof item !== "object") return [];
-      const record = item as Record<string, unknown>;
-      const node = record.type === "node" && record.data && typeof record.data === "object"
-        ? record.data as Record<string, unknown>
-        : record;
-      const sender = node.sender && typeof node.sender === "object"
-        ? node.sender as Record<string, unknown>
-        : {};
-      const content = node.content ?? node.message;
-      const segments: MessageSegment[] = Array.isArray(content)
-        ? content.filter((part): part is MessageSegment =>
-            Boolean(part) &&
-            typeof part === "object" &&
-            typeof (part as { type?: unknown }).type === "string" &&
-            Boolean((part as { data?: unknown }).data) &&
-            typeof (part as { data?: unknown }).data === "object"
-          )
-        : typeof content === "string"
-          ? [{ type: "text", data: { text: content } }]
-          : [];
-      const rawSenderId = node.user_id ?? node.uin ?? sender.user_id ?? sender.uin;
-      const senderId = rawSenderId === undefined ? undefined : String(rawSenderId);
-      const timestamp = Number(node.time);
-      return [{
-        senderId,
-        senderName: typeof (node.nickname ?? node.name ?? sender.nickname) === "string"
-          ? String(node.nickname ?? node.name ?? sender.nickname)
-          : senderId || "unknown",
-        timestamp: Number.isFinite(timestamp) ? timestamp * 1000 : undefined,
-        segments,
-      }];
-    });
+    const nodes = parseForwardNodes(rawNodes) || [];
 
     logger.info("Forward message loaded", { id, count: nodes.length });
     return nodes;

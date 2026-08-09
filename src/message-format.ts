@@ -1,4 +1,4 @@
-import type { ChatMessage, ImageReference } from "./types.js";
+import type { ChatMessage, ImageReference, MessageSegment } from "./types.js";
 import type { ImageMode } from "./config.js";
 import { isWebUrl, terminalLink } from "./terminal-text.js";
 
@@ -6,6 +6,7 @@ interface CompactOptions {
   imageMode?: ImageMode;
   terminalLinks?: boolean;
   forwardMessageId?: boolean;
+  forwardSegmentId?: boolean;
   replyLookup?: ReadonlyMap<string, ChatMessage>;
 }
 
@@ -81,6 +82,30 @@ export function getImageReferences(msg: ChatMessage) {
 
 export function getImageSources(msg: ChatMessage) {
   return getImageReferences(msg).map(({ source }) => source);
+}
+
+export function getForwardSegmentId(segment: MessageSegment): string | null {
+  if (segment.type !== "forward") return null;
+
+  const rawId = segment.data.id ?? segment.data.message_id;
+  if (typeof rawId === "string" && rawId.trim().length > 0) {
+    return rawId.trim();
+  }
+  if (typeof rawId === "number" && Number.isFinite(rawId)) {
+    return String(rawId);
+  }
+  return null;
+}
+
+export function getForwardIdsFromText(raw: string): string[] {
+  const text = decodeCQValue(raw);
+  return Array.from(text.matchAll(/\[CQ:forward((?:,[^\]]*)?)\]/g)).flatMap(
+    (match) => {
+      const data = parseCQAttrs(match[1]);
+      const id = data.id || data.message_id;
+      return id?.trim() ? [id.trim()] : [];
+    }
+  );
 }
 
 export function compactCQ(raw: string, options?: CompactOptions): string {
@@ -217,8 +242,10 @@ function compactSegment(
     }
     case "face":
       return "[face]";
-    case "forward":
-      return "[forward]";
+    case "forward": {
+      const id = data.id || data.message_id;
+      return id ? `[forward #${id}]` : "[forward]";
+    }
     default:
       return `[${type}]`;
   }
@@ -260,7 +287,12 @@ export function compactMessage(
       seg.type === "forward"
         ? options?.forwardMessageId === false
           ? "[forward]"
-          : `[forward #${msg.id}]`
+          : (() => {
+              const id = options?.forwardSegmentId
+                ? getForwardSegmentId(seg)
+                : String(msg.id);
+              return id ? `[forward #${id}]` : "[forward]";
+            })()
         : compactSegment(
             seg.type,
             seg.data,

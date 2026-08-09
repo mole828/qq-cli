@@ -1,9 +1,14 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { ImageMode } from "../config.js";
+import {
+  getForwardIdsFromText,
+  getForwardSegmentId,
+} from "../message-format.js";
 import type { ChatMessage, ForwardNode, ImageSourceResolver } from "../types.js";
 import {
   getMaxMessageScrollOffset,
+  getMessageScrollOffsetForIndex,
   MessageList,
 } from "./MessageList.js";
 
@@ -12,6 +17,8 @@ interface ForwardPanelProps {
   nodes: ForwardNode[] | null;
   loading: boolean;
   scrollOffset: number;
+  selectedNodeIndex: number | null;
+  depth: number;
   bodyRows: number;
   termWidth: number;
   cellWidth: number;
@@ -24,7 +31,14 @@ const FORWARD_HEADER_ROWS = 3;
 const FORWARD_SELF_ID = -1;
 const FORWARD_MESSAGE_GAP = 0;
 
-function forwardNodesToMessages(
+export interface ForwardTarget {
+  nodeIndex: number;
+  segmentIndex: number;
+  id: string;
+  inlineContent?: unknown;
+}
+
+export function forwardNodesToMessages(
   forwardId: string,
   nodes: ForwardNode[] | null
 ): ChatMessage[] {
@@ -41,11 +55,43 @@ function forwardNodesToMessages(
   }));
 }
 
+export function getForwardTargets(nodes: ForwardNode[] | null): ForwardTarget[] {
+  if (!nodes) return [];
+
+  return nodes.flatMap((node, nodeIndex) =>
+    node.segments.flatMap((segment, segmentIndex) => {
+      const id = getForwardSegmentId(segment);
+      if (id) {
+        const hasInlineContent = Object.prototype.hasOwnProperty.call(
+          segment.data,
+          "content"
+        );
+        return [{
+          nodeIndex,
+          segmentIndex,
+          id,
+          ...(hasInlineContent ? { inlineContent: segment.data.content } : {}),
+        }];
+      }
+      if (segment.type !== "text" || typeof segment.data.text !== "string") {
+        return [];
+      }
+      return getForwardIdsFromText(segment.data.text).map((textId) => ({
+        nodeIndex,
+        segmentIndex,
+        id: textId,
+      }));
+    })
+  );
+}
+
 export function ForwardPanel({
   forwardId,
   nodes,
   loading,
   scrollOffset,
+  selectedNodeIndex,
+  depth,
   bodyRows,
   termWidth,
   cellWidth,
@@ -55,6 +101,9 @@ export function ForwardPanel({
 }: ForwardPanelProps) {
   const messageRows = Math.max(bodyRows - FORWARD_HEADER_ROWS, 1);
   const messages = forwardNodesToMessages(forwardId, nodes);
+  const selectedMessageId = selectedNodeIndex === null
+    ? null
+    : `${forwardId}:${selectedNodeIndex}`;
 
   return (
     <Box flexDirection="column" height={bodyRows} overflow="hidden">
@@ -64,7 +113,7 @@ export function ForwardPanel({
       </Box>
       <Box height={1} overflow="hidden" paddingX={2}>
         <Text dimColor>
-          Esc close · ↑/↓ scroll · PgUp/PgDn page · Shift+Tab images
+          Esc {depth > 1 ? "back" : "close"} · Tab nested · Enter open · ↑/↓ scroll · Shift+Tab images
         </Text>
       </Box>
       <Box height={1} />
@@ -87,6 +136,8 @@ export function ForwardPanel({
             imageMode={imageMode}
             scrollOffset={scrollOffset}
             messageGap={FORWARD_MESSAGE_GAP}
+            selectedMessageId={selectedMessageId}
+            forwardSegmentId
             resolveImageSource={resolveImageSource}
           />
         </Box>
@@ -112,6 +163,33 @@ export function getForwardPanelMaxOffset(
     cellWidth,
     cellHeight,
     imageMode,
-    FORWARD_MESSAGE_GAP
+    FORWARD_MESSAGE_GAP,
+    true
+  );
+}
+
+export function getForwardPanelScrollOffset(
+  forwardId: string,
+  nodes: ForwardNode[] | null,
+  nodeIndex: number,
+  bodyRows: number,
+  termWidth: number,
+  cellWidth: number,
+  cellHeight: number,
+  imageMode: ImageMode,
+  currentOffset: number
+) {
+  return getMessageScrollOffsetForIndex(
+    forwardNodesToMessages(forwardId, nodes),
+    Math.max(bodyRows - FORWARD_HEADER_ROWS, 1),
+    FORWARD_SELF_ID,
+    termWidth,
+    cellWidth,
+    cellHeight,
+    imageMode,
+    FORWARD_MESSAGE_GAP,
+    currentOffset,
+    nodeIndex,
+    true
   );
 }
