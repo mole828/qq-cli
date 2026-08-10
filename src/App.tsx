@@ -22,6 +22,7 @@ import type {
   StickerItem,
 } from "./types.js";
 import { QQClient } from "./qq-client.js";
+import { CmuxPreview } from "./cmux-preview.js";
 import {
   attachmentToBase64,
   importPastedImagePaths,
@@ -181,6 +182,7 @@ export function App() {
   const messagesRef = useRef<ChatMessage[]>([]);
   const sessionGenerationRef = useRef(0);
   const messageScrollOffsetRef = useRef(0);
+  const cmuxPreviewRef = useRef<CmuxPreview | null>(null);
   const composerPartsRef = useRef<ComposerPart[]>(emptyComposerParts());
   const composerCursorRef = useRef(0);
   const completionRef = useRef<CompletionState | null>(null);
@@ -306,6 +308,22 @@ export function App() {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
 
+  function latestMessageForSession(contact: Contact) {
+    return messagesRef.current.reduce<ChatMessage | null>((latest, message) => {
+      if (!belongsToSession(message, contact)) return latest;
+      if (!latest || message.timestamp >= latest.timestamp) return message;
+      return latest;
+    }, null);
+  }
+
+  function updateCmuxPreview(contact: Contact, message?: ChatMessage | null) {
+    const latest = message === undefined
+      ? latestMessageForSession(contact)
+      : message;
+    if (latest) cmuxPreviewRef.current?.update(contact, latest);
+    else cmuxPreviewRef.current?.clear();
+  }
+
   useEffect(() => {
     messageScrollOffsetRef.current = messageScrollOffset;
   }, [messageScrollOffset]);
@@ -395,6 +413,15 @@ export function App() {
     }
   }, []);
 
+  useEffect(() => {
+    const preview = new CmuxPreview();
+    cmuxPreviewRef.current = preview;
+    return () => {
+      preview.dispose();
+      if (cmuxPreviewRef.current === preview) cmuxPreviewRef.current = null;
+    };
+  }, []);
+
   const resolveImageSource = useCallback((file: string) => {
     return qqRef.current?.getImageUrl(file) ?? Promise.resolve(null);
   }, []);
@@ -419,6 +446,7 @@ export function App() {
       setMessages(messagesRef.current);
       const current = activeSessionRef.current;
       if (current && belongsToSession(msg, current)) {
+        updateCmuxPreview(current, msg);
         if (messageScrollOffsetRef.current > 0) {
           const viewport = messageViewportRef.current;
           setMessageScrollOffset(
@@ -1348,6 +1376,7 @@ export function App() {
       setMessageScrollOffset(0);
       activeSessionRef.current = contact;
       setActiveSession(contact);
+      updateCmuxPreview(contact);
       setUnreadCounts((prev) => {
         if (!prev[contact.id]) return prev;
         const next = { ...prev };
@@ -1389,6 +1418,7 @@ export function App() {
     const sessionMessages = messagesRef.current
       .filter((message) => belongsToSession(message, contact))
       .sort((a, b) => a.timestamp - b.timestamp);
+    updateCmuxPreview(contact, sessionMessages.at(-1) || null);
     const loadedCount = shouldRequestHistory
       ? history?.length || 0
       : sessionMessages.length;
@@ -1423,6 +1453,7 @@ export function App() {
       messagesRef.current = [...messagesRef.current, sent];
       setMessages(messagesRef.current);
     }
+    updateCmuxPreview(contact, sent);
     if (activeSessionRef.current && sessionKey(activeSessionRef.current) === sessionKey(contact)) {
       setMessageScrollOffset(0);
     }

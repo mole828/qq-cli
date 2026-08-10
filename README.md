@@ -98,6 +98,20 @@ QQ_CLI_IMAGE_MODE=inline npm run dev
 
 消息之间默认不留空行。需要恢复更松散的间距时，可以设置 `QQ_CLI_MESSAGE_GAP=1`。
 
+如果在 cmux workspace 中运行，qq-cli 会把当前会话最新的一条消息写入 workspace description，显示在 cmux 侧栏标题下方；它不会调用 notification/alert。第一行显示会话和发送者，第二行开始显示压缩后的正文。短时间内连续到达的消息会合并，只保留最后一条待写入内容；正文最多保留约 512 个终端单元格，cmux description 最多显示 12 行。默认自动检测 cmux；需要关闭时可以设置：
+
+```bash
+QQ_CLI_CMUX=off npm run dev
+```
+
+如果需要清理旧版本遗留的 status，且 cmux CLI 不在 `PATH` 中，可以显式指定路径：
+
+```bash
+QQ_CLI_CMUX_PATH=/Applications/cmux.app/Contents/Resources/bin/cmux npm run dev
+```
+
+此前版本已经产生的 notification history 不会被新通道自动删除；清理一次 cmux 通知面板后，qq-cli 后续不会再新增这类通知。
+
 ## 本地历史复现
 
 可以把指定群的当前聊天记录和图片保存到 `.local/history/`，用于稳定复现渲染问题：
