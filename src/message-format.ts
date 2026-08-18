@@ -1,4 +1,9 @@
-import type { ChatMessage, ImageReference, MessageSegment } from "./types.js";
+import type {
+  ChatMessage,
+  ImageReference,
+  MentionLabelLookup,
+  MessageSegment,
+} from "./types.js";
 import type { ImageMode } from "./config.js";
 import { isWebUrl, terminalLink } from "./terminal-text.js";
 
@@ -8,6 +13,7 @@ interface CompactOptions {
   forwardMessageId?: boolean;
   forwardSegmentId?: boolean;
   replyLookup?: ReadonlyMap<string, ChatMessage>;
+  mentionLabels?: MentionLabelLookup;
 }
 
 export function decodeCQValue(value: string) {
@@ -119,7 +125,8 @@ export function compactCQ(raw: string, options?: CompactOptions): string {
         data,
         options?.imageMode ?? "off",
         options?.terminalLinks ?? false,
-        options?.replyLookup
+        options?.replyLookup,
+        options?.mentionLabels
       );
     }
   );
@@ -203,7 +210,8 @@ function compactSegment(
   rawData: Record<string, unknown>,
   imageMode: ImageMode,
   terminalLinks = false,
-  replyLookup?: ReadonlyMap<string, ChatMessage>
+  replyLookup?: ReadonlyMap<string, ChatMessage>,
+  mentionLabels?: MentionLabelLookup
 ): string {
   const data = stringAttrs(rawData);
   const resource = resourceEntry(data);
@@ -221,7 +229,9 @@ function compactSegment(
 
   switch (type) {
     case "text":
-      return data.text ? compactCQ(data.text, { imageMode, terminalLinks }) : "";
+      return data.text
+        ? compactCQ(data.text, { imageMode, terminalLinks, mentionLabels })
+        : "";
     case "image":
       return imageToken(data, imageMode);
     case "record":
@@ -235,9 +245,15 @@ function compactSegment(
     case "json":
       return compactNewsJson(data, terminalLinks);
     case "reply":
-      return replyToken(data, replyLookup, imageMode);
+      return replyToken(data, replyLookup, imageMode, mentionLabels);
     case "at": {
       const qq = data.qq || (typeof rawData.qq === "number" ? String(rawData.qq) : "");
+      const text = data.text?.trim();
+      const label = mentionLabels?.get(qq)?.trim();
+      if (label && label !== qq) return `@${label.replace(/^@+/, "")}`;
+      if (text && text !== `@${qq}` && text !== qq) {
+        return text.startsWith("@") ? text : `@${text}`;
+      }
       return `@${qq || "user"}`;
     }
     case "face":
@@ -254,7 +270,8 @@ function compactSegment(
 function replyToken(
   data: Record<string, string>,
   replyLookup: ReadonlyMap<string, ChatMessage> | undefined,
-  imageMode: ImageMode
+  imageMode: ImageMode,
+  mentionLabels?: MentionLabelLookup
 ) {
   const id = data.id || data.message_id;
   if (!id) return "[reply]";
@@ -265,7 +282,7 @@ function replyToken(
   const previewMessage = target.segments?.length
     ? { ...target, segments: target.segments.filter((seg) => seg.type !== "reply") }
     : target;
-  const content = compactMessage(previewMessage, { imageMode })
+  const content = compactMessage(previewMessage, { imageMode, mentionLabels })
     .replace(/\s+/g, " ")
     .trim();
   const chars = Array.from(content);
@@ -298,7 +315,8 @@ export function compactMessage(
             seg.data,
             imageMode,
             options?.terminalLinks ?? false,
-            options?.replyLookup
+            options?.replyLookup,
+            options?.mentionLabels
           )
     );
     return parts.join(" ");
@@ -308,5 +326,6 @@ export function compactMessage(
     imageMode,
     terminalLinks: options?.terminalLinks,
     replyLookup: options?.replyLookup,
+    mentionLabels: options?.mentionLabels,
   });
 }

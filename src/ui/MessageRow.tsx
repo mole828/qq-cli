@@ -1,6 +1,11 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { ChatMessage, Contact, ImageSourceResolver } from "../types.js";
+import type {
+  ChatMessage,
+  Contact,
+  ImageSourceResolver,
+  MentionLabelLookup,
+} from "../types.js";
 import type { ImageMode } from "../config.js";
 import { compactMessage, getImageReferences } from "../message-format.js";
 import {
@@ -37,6 +42,7 @@ interface MessageRowProps {
   replyLookup?: ReadonlyMap<string, ChatMessage>;
   selected?: boolean;
   forwardSegmentId?: boolean;
+  mentionLabels?: MentionLabelLookup;
   resolveImageSource?: ImageSourceResolver;
 }
 
@@ -55,6 +61,7 @@ export function MessageRow({
   replyLookup,
   selected = false,
   forwardSegmentId = false,
+  mentionLabels,
   resolveImageSource,
 }: MessageRowProps) {
   const isMine = msg.senderId === selfId;
@@ -65,6 +72,7 @@ export function MessageRow({
     imageMode,
     replyLookup,
     forwardSegmentId,
+    mentionLabels,
   });
   const linkedContent =
     compactMessage(msg, {
@@ -72,6 +80,7 @@ export function MessageRow({
       terminalLinks: true,
       replyLookup,
       forwardSegmentId,
+      mentionLabels,
     }) || "(empty)";
   const imageReferences =
     imageMode === "inline" && renderInlineImage ? getImageReferences(msg) : [];

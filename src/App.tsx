@@ -18,6 +18,7 @@ import type {
   InlineInsertItem,
   MessageSegment,
   ForwardNode,
+  MentionLabelLookup,
   ReplyTarget,
   StickerItem,
 } from "./types.js";
@@ -70,7 +71,10 @@ import {
   moveMessageScrollOffset,
 } from "./ui/MessageList.js";
 import { useImageMetadataVersion } from "./ui/ImagePreview.js";
-import { buildInlineMentionItems } from "./inline-insert.js";
+import {
+  buildInlineMentionItems,
+  buildMentionLabelLookup,
+} from "./inline-insert.js";
 import {
   findAudioPathCompletions,
   formatAudioPathCompletion,
@@ -191,6 +195,7 @@ export function App() {
   const customFaceCacheRef = useRef(new CustomFaceCache());
   const groupMemberRequestRef = useRef(0);
   const groupMembersCacheRef = useRef(new Map<number, GroupMember[]>());
+  const mentionLabelsRef = useRef<MentionLabelLookup>(new Map());
   const forwardRequestRef = useRef(0);
 
   const [connected, setConnected] = useState(false);
@@ -222,6 +227,7 @@ export function App() {
     termWidth,
     cellWidth: terminalInfo.cellWidth,
     cellHeight: terminalInfo.cellHeight,
+    mentionLabels: new Map<string, string>() as MentionLabelLookup,
   });
 
   // ---- scrollable picker modal ----
@@ -243,6 +249,26 @@ export function App() {
   const [groupMembersLoading, setGroupMembersLoading] = useState(false);
   const [inlinePickerHighlight, setInlinePickerHighlight] = useState(0);
   const [inlinePickerDismissed, setInlinePickerDismissed] = useState<string | null>(null);
+
+  const mentionLabels = useMemo<MentionLabelLookup>(() => {
+    if (activeSession?.type !== "group") return new Map();
+
+    const labels = new Map(buildMentionLabelLookup(groupMembers));
+    for (const message of messages) {
+      if (!belongsToSession(message, activeSession)) continue;
+      const userId = String(message.senderId);
+      const senderName = message.senderName.trim();
+      if (
+        senderName &&
+        senderName !== userId &&
+        senderName.toLowerCase() !== "unknown" &&
+        !labels.has(userId)
+      ) {
+        labels.set(userId, senderName);
+      }
+    }
+    return labels;
+  }, [activeSession, groupMembers, messages]);
 
   const forwardView = forwardStack[forwardStack.length - 1] ?? null;
 
@@ -320,7 +346,13 @@ export function App() {
     const latest = message === undefined
       ? latestMessageForSession(contact)
       : message;
-    if (latest) cmuxPreviewRef.current?.update(contact, latest);
+    if (latest) {
+      cmuxPreviewRef.current?.update(
+        contact,
+        latest,
+        mentionLabelsRef.current
+      );
+    }
     else cmuxPreviewRef.current?.clear();
   }
 
@@ -337,7 +369,9 @@ export function App() {
       termWidth,
       cellWidth: terminalInfo.cellWidth,
       cellHeight: terminalInfo.cellHeight,
+      mentionLabels,
     };
+    mentionLabelsRef.current = mentionLabels;
   }, [
     bodyRows,
     imageMode,
@@ -346,7 +380,12 @@ export function App() {
     termWidth,
     terminalInfo.cellWidth,
     terminalInfo.cellHeight,
+    mentionLabels,
   ]);
+
+  useEffect(() => {
+    if (activeSession) updateCmuxPreview(activeSession);
+  }, [activeSession, mentionLabels]);
 
   useEffect(() => {
     if (connected) return;
@@ -384,11 +423,6 @@ export function App() {
     const cached = groupMembersCacheRef.current.get(activeGroupId);
     setGroupMembers(cached || []);
 
-    if (!inlinePickerOpen) {
-      setGroupMembersLoading(false);
-      return;
-    }
-
     if (cached) {
       setGroupMembersLoading(false);
       return;
@@ -405,7 +439,7 @@ export function App() {
       setGroupMembers(members);
       setGroupMembersLoading(false);
     });
-  }, [activeGroupId, connected, inlinePickerOpen]);
+  }, [activeGroupId, connected]);
 
   useEffect(() => () => {
     for (const attachment of composerImages(composerPartsRef.current)) {
@@ -461,7 +495,9 @@ export function App() {
                 viewport.cellHeight,
                 viewport.imageMode,
                 viewport.messageGap,
-                messagesRef.current
+                messagesRef.current,
+                false,
+                viewport.mentionLabels
               )
           );
         }
@@ -1065,7 +1101,8 @@ export function App() {
             terminalInfo.cellWidth,
             terminalInfo.cellHeight,
             imageMode,
-            offset
+            offset,
+            mentionLabels
           )
         );
         return;
@@ -1090,7 +1127,8 @@ export function App() {
         termWidth,
         terminalInfo.cellWidth,
         terminalInfo.cellHeight,
-        imageMode
+        imageMode,
+        mentionLabels
       );
       if (key.upArrow) {
         setForwardScrollOffset((offset) => Math.min(offset + 1, maxOffset));
@@ -1250,7 +1288,9 @@ export function App() {
         terminalInfo.cellWidth,
         terminalInfo.cellHeight,
         imageMode,
-        messageGap
+        messageGap,
+        false,
+        mentionLabels
       );
       setMessageScrollOffset((offset) => Math.min(offset + 1, maxOffset));
       return;
@@ -1271,7 +1311,8 @@ export function App() {
           imageMode,
           messageGap,
           offset,
-          "older"
+          "older",
+          mentionLabels
         )
       );
       return;
@@ -1288,7 +1329,8 @@ export function App() {
           imageMode,
           messageGap,
           offset,
-          "newer"
+          "newer",
+          mentionLabels
         )
       );
       return;
@@ -1620,7 +1662,7 @@ export function App() {
           break;
         }
 
-        const preview = compactMessage(target, { imageMode })
+        const preview = compactMessage(target, { imageMode, mentionLabels })
           .replace(/\s+/g, " ")
           .trim() || "(empty)";
         setReplyTarget({
@@ -1749,7 +1791,9 @@ export function App() {
     terminalInfo.cellWidth,
     terminalInfo.cellHeight,
     imageMode,
-    messageGap
+    messageGap,
+    false,
+    mentionLabels
   );
   const effectiveMessageScrollOffset = Math.min(
     messageScrollOffset,
@@ -1777,6 +1821,7 @@ export function App() {
           inlinePickerItems,
           inlinePickerHighlight,
           inlinePickerLoading,
+          mentionLabels,
         }}
         onInputChange={handleInputChange}
         onCursorChange={handleComposerCursorChange}
@@ -1812,6 +1857,7 @@ export function App() {
             cellWidth={terminalInfo.cellWidth}
             cellHeight={terminalInfo.cellHeight}
             imageMode={imageMode}
+            mentionLabels={mentionLabels}
             resolveImageSource={resolveImageSource}
           />
         ) : helpMode ? (
@@ -1861,6 +1907,7 @@ export function App() {
             imageMode={imageMode}
             scrollOffset={effectiveMessageScrollOffset}
             messageGap={messageGap}
+            mentionLabels={mentionLabels}
             resolveImageSource={resolveImageSource}
           />
         ) : null}

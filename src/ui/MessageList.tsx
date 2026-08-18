@@ -1,5 +1,10 @@
 import React from "react";
-import type { ChatMessage, Contact, ImageSourceResolver } from "../types.js";
+import type {
+  ChatMessage,
+  Contact,
+  ImageSourceResolver,
+  MentionLabelLookup,
+} from "../types.js";
 import type { ImageMode } from "../config.js";
 import { compactMessage, getImageSources } from "../message-format.js";
 import { wrapCells } from "../terminal-text.js";
@@ -48,6 +53,7 @@ interface MessageListProps {
   messageGap: number;
   selectedMessageId?: string | null;
   forwardSegmentId?: boolean;
+  mentionLabels?: MentionLabelLookup;
   resolveImageSource?: ImageSourceResolver;
 }
 
@@ -61,12 +67,18 @@ function getMessageRowCost(
   canRenderInlineImages: boolean,
   messageGap: number,
   replyLookup?: ReadonlyMap<string, ChatMessage>,
-  forwardSegmentId = false
+  forwardSegmentId = false,
+  mentionLabels?: MentionLabelLookup
 ) {
   const isMine = msg.senderId === selfId || msg.isMine;
   const textWidth = Math.max(termWidth - (isMine ? 6 : 8), 16);
   const lineCount = wrapCells(
-    compactMessage(msg, { imageMode, replyLookup, forwardSegmentId }) || "(empty)",
+    compactMessage(msg, {
+      imageMode,
+      replyLookup,
+      forwardSegmentId,
+      mentionLabels,
+    }) || "(empty)",
     textWidth,
     MAX_BODY_LINES
   ).length;
@@ -88,7 +100,8 @@ export function getMessageScrollRows(
   imageMode: ImageMode,
   messageGap: number,
   messages: ChatMessage[] = [msg],
-  forwardSegmentId = false
+  forwardSegmentId = false,
+  mentionLabels?: MentionLabelLookup
 ) {
   return getMessageRowCost(
     msg,
@@ -100,7 +113,8 @@ export function getMessageScrollRows(
     bodyRows >= INLINE_IMAGE_ROW_COST,
     messageGap,
     buildReplyLookup(messages),
-    forwardSegmentId
+    forwardSegmentId,
+    mentionLabels
   );
 }
 
@@ -114,7 +128,8 @@ export function moveMessageScrollOffset(
   imageMode: ImageMode,
   messageGap: number,
   currentOffset: number,
-  direction: "older" | "newer"
+  direction: "older" | "newer",
+  mentionLabels?: MentionLabelLookup
 ) {
   const targetRows = Math.max(Math.floor(bodyRows / 2), 1);
   const maxOffset = getMaxMessageScrollOffset(
@@ -125,7 +140,9 @@ export function moveMessageScrollOffset(
     cellWidth,
     cellHeight,
     imageMode,
-    messageGap
+    messageGap,
+    false,
+    mentionLabels
   );
   const delta = direction === "older" ? targetRows : -targetRows;
   return clampOffset(currentOffset + delta, maxOffset);
@@ -144,7 +161,8 @@ export function getMaxMessageScrollOffset(
   cellHeight: number,
   imageMode: ImageMode,
   messageGap: number,
-  forwardSegmentId = false
+  forwardSegmentId = false,
+  mentionLabels?: MentionLabelLookup
 ) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
   const replyLookup = buildReplyLookup(messages);
@@ -161,7 +179,8 @@ export function getMaxMessageScrollOffset(
         canRenderInlineImages,
         messageGap,
         replyLookup,
-        forwardSegmentId
+        forwardSegmentId,
+        mentionLabels
       ),
     0
   );
@@ -180,7 +199,8 @@ export function getMessageScrollOffsetForIndex(
   messageGap: number,
   currentOffset: number,
   index: number,
-  forwardSegmentId = false
+  forwardSegmentId = false,
+  mentionLabels?: MentionLabelLookup
 ) {
   if (messages.length === 0 || index < 0 || index >= messages.length) {
     return 0;
@@ -199,7 +219,8 @@ export function getMessageScrollOffsetForIndex(
       canRenderInlineImages,
       messageGap,
       replyLookup,
-      forwardSegmentId
+      forwardSegmentId,
+      mentionLabels
     )
   );
   const totalRows = rowCosts.reduce((sum, rows) => sum + rows, 0);
@@ -232,7 +253,8 @@ function getVisibleMessages(
   canRenderInlineImages: boolean,
   messageGap: number,
   scrollOffset: number,
-  forwardSegmentId = false
+  forwardSegmentId = false,
+  mentionLabels?: MentionLabelLookup
 ) {
   const replyLookup = buildReplyLookup(messages);
   const rowCosts = messages.map((msg) =>
@@ -246,7 +268,8 @@ function getVisibleMessages(
       canRenderInlineImages,
       messageGap,
       replyLookup,
-      forwardSegmentId
+      forwardSegmentId,
+      mentionLabels
     )
   );
   const totalRows = rowCosts.reduce((sum, rows) => sum + rows, 0);
@@ -290,6 +313,7 @@ export function MessageList({
   scrollOffset,
   selectedMessageId,
   forwardSegmentId = false,
+  mentionLabels,
   resolveImageSource,
 }: MessageListProps) {
   const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
@@ -305,7 +329,8 @@ export function MessageList({
     canRenderInlineImages,
     messageGap,
     scrollOffset,
-    forwardSegmentId
+    forwardSegmentId,
+    mentionLabels
   );
 
   return (
@@ -332,6 +357,7 @@ export function MessageList({
           replyLookup={replyLookup}
           selected={selectedMessageId === String(msg.id)}
           forwardSegmentId={forwardSegmentId}
+          mentionLabels={mentionLabels}
           resolveImageSource={resolveImageSource}
         />
       ))}

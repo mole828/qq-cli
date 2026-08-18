@@ -106,6 +106,7 @@ export function HistoryApp({
         inlinePickerItems: [],
         inlinePickerHighlight: 0,
         inlinePickerLoading: false,
+        mentionLabels: new Map<string, string>(),
       }}
       onInputChange={() => {}}
       onCursorChange={() => {}}

@@ -8,6 +8,7 @@ import type {
   Contact,
   ImageSourceResolver,
   InlineInsertItem,
+  MentionLabelLookup,
   ReplyTarget,
 } from "../types.js";
 import { getComposerRows, TERMINAL_GUTTER_ROWS } from "./layout.js";
@@ -36,6 +37,7 @@ export interface ChatPageState {
   inlinePickerItems: InlineInsertItem[];
   inlinePickerHighlight: number;
   inlinePickerLoading: boolean;
+  mentionLabels: MentionLabelLookup;
 }
 
 interface ChatPageProps {
@@ -75,7 +77,9 @@ export function ChatPage({
     terminalInfo.cellWidth,
     terminalInfo.cellHeight,
     state.imageMode,
-    state.messageGap
+    state.messageGap,
+    false,
+    state.mentionLabels
   );
   const effectiveOffset = Math.min(Math.max(state.scrollOffset, 0), maxOffset);
 
@@ -99,6 +103,7 @@ export function ChatPage({
             imageMode={state.imageMode}
             scrollOffset={effectiveOffset}
             messageGap={state.messageGap}
+            mentionLabels={state.mentionLabels}
             resolveImageSource={resolveImageSource}
           />
         ) : null}

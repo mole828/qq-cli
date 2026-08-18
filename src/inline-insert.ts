@@ -1,14 +1,30 @@
-import type { GroupMember, InlineInsertItem } from "./types.js";
+import type {
+  GroupMember,
+  InlineInsertItem,
+  MentionLabelLookup,
+} from "./types.js";
+
+export function getGroupMemberLabel(member: GroupMember) {
+  return (member.card || member.nickname || member.userId)
+    .replace(/^@+/, "")
+    .trim() || member.userId;
+}
+
+export function buildMentionLabelLookup(
+  members: readonly GroupMember[]
+): MentionLabelLookup {
+  return new Map(
+    members.map((member) => [member.userId, getGroupMemberLabel(member)])
+  );
+}
 
 export function buildInlineMentionItems(
-  members: GroupMember[],
+  members: readonly GroupMember[],
   query: string
 ): InlineInsertItem[] {
   const filter = query.trim().toLowerCase();
   return members.flatMap((member) => {
-    const label = (member.card || member.nickname || member.userId)
-      .replace(/^@+/, "")
-      .trim() || member.userId;
+    const label = getGroupMemberLabel(member);
     const searchable = [label, member.nickname, member.card, member.userId]
       .filter(Boolean)
       .join(" ")

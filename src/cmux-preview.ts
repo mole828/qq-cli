@@ -2,7 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
-import type { ChatMessage, Contact } from "./types.js";
+import type {
+  ChatMessage,
+  Contact,
+  MentionLabelLookup,
+} from "./types.js";
 import { compactMessage } from "./message-format.js";
 import { logger } from "./logger.js";
 import { truncateCells } from "./terminal-text.js";
@@ -62,7 +66,8 @@ function cleanPreview(value: string) {
 
 export function formatCmuxMessagePreview(
   contact: Contact,
-  message: ChatMessage
+  message: ChatMessage,
+  mentionLabels?: MentionLabelLookup
 ): string {
   const sessionMarker = contact.type === "group" ? "#" : "@";
   const sender = message.isMine
@@ -73,7 +78,10 @@ export function formatCmuxMessagePreview(
     MAX_HEADER_CELLS
   );
   const body = truncateCells(
-    cleanPreview(compactMessage(message, { imageMode: "off" })) || "(empty)",
+    cleanPreview(compactMessage(message, {
+      imageMode: "off",
+      mentionLabels,
+    })) || "(empty)",
     MAX_BODY_CELLS
   );
   return `${header}\n${body}`;
@@ -107,9 +115,17 @@ export class CmuxPreview {
     }
   }
 
-  update(contact: Contact, message: ChatMessage) {
+  update(
+    contact: Contact,
+    message: ChatMessage,
+    mentionLabels?: MentionLabelLookup
+  ) {
     if (!this.enabled || this.disposed) return;
-    this.pendingDescription = formatCmuxMessagePreview(contact, message);
+    this.pendingDescription = formatCmuxMessagePreview(
+      contact,
+      message,
+      mentionLabels
+    );
     this.scheduleFlush();
   }
 

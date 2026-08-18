@@ -5,7 +5,12 @@ import {
   getForwardIdsFromText,
   getForwardSegmentId,
 } from "../message-format.js";
-import type { ChatMessage, ForwardNode, ImageSourceResolver } from "../types.js";
+import type {
+  ChatMessage,
+  ForwardNode,
+  ImageSourceResolver,
+  MentionLabelLookup,
+} from "../types.js";
 import {
   getMaxMessageScrollOffset,
   getMessageScrollOffsetForIndex,
@@ -24,6 +29,7 @@ interface ForwardPanelProps {
   cellWidth: number;
   cellHeight: number;
   imageMode: ImageMode;
+  mentionLabels?: MentionLabelLookup;
   resolveImageSource?: ImageSourceResolver;
 }
 
@@ -97,6 +103,7 @@ export function ForwardPanel({
   cellWidth,
   cellHeight,
   imageMode,
+  mentionLabels,
   resolveImageSource,
 }: ForwardPanelProps) {
   const messageRows = Math.max(bodyRows - FORWARD_HEADER_ROWS, 1);
@@ -134,6 +141,7 @@ export function ForwardPanel({
             cellHeight={cellHeight}
             bodyRows={messageRows}
             imageMode={imageMode}
+            mentionLabels={mentionLabels}
             scrollOffset={scrollOffset}
             messageGap={FORWARD_MESSAGE_GAP}
             selectedMessageId={selectedMessageId}
@@ -153,7 +161,8 @@ export function getForwardPanelMaxOffset(
   termWidth: number,
   cellWidth: number,
   cellHeight: number,
-  imageMode: ImageMode
+  imageMode: ImageMode,
+  mentionLabels?: MentionLabelLookup
 ) {
   return getMaxMessageScrollOffset(
     forwardNodesToMessages(forwardId, nodes),
@@ -164,7 +173,8 @@ export function getForwardPanelMaxOffset(
     cellHeight,
     imageMode,
     FORWARD_MESSAGE_GAP,
-    true
+    true,
+    mentionLabels
   );
 }
 
@@ -177,7 +187,8 @@ export function getForwardPanelScrollOffset(
   cellWidth: number,
   cellHeight: number,
   imageMode: ImageMode,
-  currentOffset: number
+  currentOffset: number,
+  mentionLabels?: MentionLabelLookup
 ) {
   return getMessageScrollOffsetForIndex(
     forwardNodesToMessages(forwardId, nodes),
@@ -190,6 +201,7 @@ export function getForwardPanelScrollOffset(
     FORWARD_MESSAGE_GAP,
     currentOffset,
     nodeIndex,
-    true
+    true,
+    mentionLabels
   );
 }

@@ -52,6 +52,8 @@ export interface GroupMember {
   role?: string;
 }
 
+export type MentionLabelLookup = ReadonlyMap<string, string>;
+
 export interface InlineInsertItem {
   type: "at";
   id: string;
