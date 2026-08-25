@@ -5,7 +5,7 @@ import type {
 } from "./types.js";
 
 export function getGroupMemberLabel(member: GroupMember) {
-  return (member.card || member.nickname || member.userId)
+  return (member.remark || member.card || member.nickname || member.userId)
     .replace(/^@+/, "")
     .trim() || member.userId;
 }
@@ -25,7 +25,7 @@ export function buildInlineMentionItems(
   const filter = query.trim().toLowerCase();
   return members.flatMap((member) => {
     const label = getGroupMemberLabel(member);
-    const searchable = [label, member.nickname, member.card, member.userId]
+    const searchable = [label, member.remark, member.nickname, member.card, member.userId]
       .filter(Boolean)
       .join(" ")
       .toLowerCase();

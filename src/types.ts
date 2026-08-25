@@ -49,6 +49,7 @@ export interface GroupMember {
   userId: string;
   nickname: string;
   card?: string;
+  remark?: string;
   role?: string;
 }
 
@@ -103,6 +104,8 @@ export interface ChatMessage {
   chatType: "private" | "group";
   senderId: number;
   senderName: string;
+  senderNickname?: string;
+  senderCard?: string;
   content: string;
   timestamp: number;
   isMine: boolean;

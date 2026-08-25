@@ -473,6 +473,18 @@ export function App() {
       else setStatusMsg("Reconnecting...");
     });
 
+    client.onSenderNamesChanged(() => {
+      const previous = messagesRef.current;
+      const refreshed = client.refreshMessageSenderNames(previous);
+      const changed = refreshed.some((message, index) => message !== previous[index]);
+      if (!changed) return;
+
+      messagesRef.current = refreshed;
+      setMessages(refreshed);
+      const current = activeSessionRef.current;
+      if (current) updateCmuxPreview(current);
+    });
+
     client.onMessage((msg) => {
       const key = messageKey(msg);
       if (messagesRef.current.some((item) => messageKey(item) === key)) return;

@@ -43,6 +43,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
+function normalizeDisplayName(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const name = value.trim();
+  return name || undefined;
+}
+
 function parseMessageSegments(content: unknown): MessageSegment[] {
   if (Array.isArray(content)) {
     return content.filter((part): part is MessageSegment =>
@@ -121,10 +127,13 @@ export class QQClient {
   private nickname = "";
   private wsUrl: string;
   private authHeader: Record<string, string> | undefined;
+  private friendRemarks = new Map<string, string>();
+  private groupMemberCache = new Map<number, Map<string, GroupMember>>();
 
   private onMessageCallback: ((msg: ChatMessage) => void) | null = null;
   private onContactsCallback: ((contacts: Contact[]) => void) | null = null;
   private onStatusCallback: ((connected: boolean) => void) | null = null;
+  private onSenderNamesChangedCallback: (() => void) | null = null;
 
   constructor(rawUrl: string = "ws://localhost:3001") {
     const { url, authHeader } = parseWsUrl(rawUrl);
@@ -145,6 +154,55 @@ export class QQClient {
 
   onStatus(cb: (connected: boolean) => void) {
     this.onStatusCallback = cb;
+  }
+
+  onSenderNamesChanged(cb: () => void) {
+    this.onSenderNamesChangedCallback = cb;
+  }
+
+  private notifySenderNamesChanged() {
+    this.onSenderNamesChangedCallback?.();
+  }
+
+  private resolveSenderName(
+    senderId: number,
+    groupId: number | undefined,
+    sources: {
+      nickname?: unknown;
+      card?: unknown;
+      fallback?: unknown;
+    }
+  ) {
+    const member = groupId === undefined
+      ? undefined
+      : this.groupMemberCache.get(groupId)?.get(String(senderId));
+    const groupCard = groupId === undefined
+      ? undefined
+      : normalizeDisplayName(member?.card) || normalizeDisplayName(sources.card);
+
+    return normalizeDisplayName(this.friendRemarks.get(String(senderId))) ||
+      groupCard ||
+      normalizeDisplayName(sources.nickname) ||
+      normalizeDisplayName(member?.nickname) ||
+      normalizeDisplayName(sources.fallback) ||
+      String(senderId);
+  }
+
+  refreshMessageSenderNames(messages: readonly ChatMessage[]): ChatMessage[] {
+    return messages.map((message) => {
+      const senderName = this.resolveSenderName(
+        message.senderId,
+        message.chatType === "group" ? message.group_id : undefined,
+        {
+          nickname: message.senderNickname,
+          card: message.senderCard,
+          fallback: message.senderName,
+        }
+      );
+      return senderName === message.senderName
+        ? message
+        : { ...message, senderName };
+    });
   }
 
   private updateStatus(connected: boolean) {
@@ -246,6 +304,8 @@ export class QQClient {
     }
 
     const textContent = event.raw_message || this.extractText(event.message);
+    const senderNickname = normalizeDisplayName(event.sender.nickname);
+    const senderCard = normalizeDisplayName(event.sender.card);
 
     logger.info("Message received", {
       message_id: event.message_id,
@@ -260,7 +320,12 @@ export class QQClient {
       contactId,
       chatType: event.message_type,
       senderId,
-      senderName: event.sender.card || event.sender.nickname || String(senderId),
+      senderName: this.resolveSenderName(senderId, groupId, {
+        nickname: senderNickname,
+        card: senderCard,
+      }),
+      senderNickname,
+      senderCard,
       content: textContent,
       timestamp: event.time * 1000,
       isMine: isSent || senderId === this.selfId,
@@ -301,20 +366,28 @@ export class QQClient {
       : undefined;
     const rawMessage = item.raw_message;
     const chatType = contact.type === "group" ? "group" : "private";
+    const senderNickname = normalizeDisplayName(sender.nickname);
+    const senderCard = normalizeDisplayName(sender.card);
+    const groupId = chatType === "group" ? contact.id : undefined;
 
     return {
       id,
       contactId: contact.id,
       chatType,
       senderId,
-      senderName: sender.card || sender.nickname || String(senderId),
+      senderName: this.resolveSenderName(senderId, groupId, {
+        nickname: senderNickname,
+        card: senderCard,
+      }),
+      senderNickname,
+      senderCard,
       content:
         typeof rawMessage === "string"
           ? rawMessage
           : this.extractText(item.message),
       timestamp: Number(item.time || 0) * 1000,
       isMine: senderId === this.selfId,
-      group_id: chatType === "group" ? contact.id : undefined,
+      group_id: groupId,
       segments,
     };
   }
@@ -536,12 +609,23 @@ export class QQClient {
   async getFriendList(): Promise<Contact[]> {
     const res = await this.callApi("get_friend_list");
     if (res.status === "ok" && Array.isArray(res.data)) {
-      const list = (res.data as Array<{ user_id: number; nickname: string; remark?: string }>).map((f) => ({
-        id: f.user_id,
-        name: f.remark || f.nickname,
-        type: "friend" as const,
-        remark: f.nickname,
-      }));
+      this.friendRemarks.clear();
+      const list = (res.data as Array<Record<string, unknown>>).flatMap((f) => {
+        const id = Number(f.user_id);
+        if (!Number.isFinite(id)) return [];
+
+        const nickname = normalizeDisplayName(f.nickname) || String(id);
+        const remark = normalizeDisplayName(f.remark);
+        if (remark) this.friendRemarks.set(String(id), remark);
+
+        return [{
+          id,
+          name: remark || nickname,
+          type: "friend" as const,
+          ...(remark ? { remark } : {}),
+        }];
+      });
+      this.notifySenderNamesChanged();
       logger.info("Friend list loaded", { count: list.length });
       return list;
     }
@@ -582,11 +666,23 @@ export class QQClient {
       if (typeof rawId !== "number" && typeof rawId !== "string") return [];
 
       const userId = String(rawId);
-      const nickname = typeof item.nickname === "string" ? item.nickname : userId;
-      const card = typeof item.card === "string" ? item.card : undefined;
-      const role = typeof item.role === "string" ? item.role : undefined;
-      return [{ userId, nickname, ...(card ? { card } : {}), ...(role ? { role } : {}) }];
+      const nickname = normalizeDisplayName(item.nickname) || userId;
+      const card = normalizeDisplayName(item.card);
+      const remark = normalizeDisplayName(this.friendRemarks.get(userId));
+      const role = normalizeDisplayName(item.role);
+      return [{
+        userId,
+        nickname,
+        ...(card ? { card } : {}),
+        ...(remark ? { remark } : {}),
+        ...(role ? { role } : {}),
+      }];
     });
+    this.groupMemberCache.set(
+      groupId,
+      new Map(list.map((member) => [member.userId, member]))
+    );
+    this.notifySenderNamesChanged();
     logger.info("Group member list loaded", { group_id: groupId, count: list.length });
     return list;
   }
