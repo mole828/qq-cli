@@ -114,6 +114,54 @@ export function getForwardIdsFromText(raw: string): string[] {
   );
 }
 
+function mentionTargetMatches(
+  value: unknown,
+  selfId: number,
+  includeAll: boolean
+) {
+  if (!Number.isFinite(selfId) || selfId <= 0) return false;
+
+  const target = typeof value === "string"
+    ? value.trim()
+    : typeof value === "number" && Number.isFinite(value)
+      ? String(value)
+      : "";
+  return target === String(selfId) ||
+    (includeAll && target.toLowerCase() === "all");
+}
+
+function rawMessageMentionsUser(raw: string, selfId: number, includeAll: boolean) {
+  return Array.from(raw.matchAll(/\[CQ:at((?:,[^\]]*)?)\]/gi)).some((match) => {
+    const data = parseCQAttrs(match[1]);
+    return mentionTargetMatches(data.qq, selfId, includeAll);
+  });
+}
+
+export function messageMentionsUser(
+  msg: ChatMessage,
+  selfId: number,
+  options?: { includeAll?: boolean }
+) {
+  if (!Number.isFinite(selfId) || selfId <= 0) return false;
+  const includeAll = options?.includeAll ?? false;
+
+  const structuredMention = msg.segments?.some((segment) => {
+    const type = segment.type.toLowerCase();
+    if (
+      type === "at" &&
+      mentionTargetMatches(segment.data.qq, selfId, includeAll)
+    ) {
+      return true;
+    }
+    return type === "text" &&
+      typeof segment.data.text === "string" &&
+      rawMessageMentionsUser(segment.data.text, selfId, includeAll);
+  });
+
+  return Boolean(structuredMention) ||
+    rawMessageMentionsUser(msg.content, selfId, includeAll);
+}
+
 export function compactCQ(raw: string, options?: CompactOptions): string {
   return raw.replace(
     /\[CQ:([^,\]]+)((?:,[^\]]*)?)\]/g,

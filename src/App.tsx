@@ -23,7 +23,7 @@ import type {
   StickerItem,
 } from "./types.js";
 import { QQClient } from "./qq-client.js";
-import { CmuxPreview } from "./cmux-preview.js";
+import { CmuxPreview, parseCmuxMentionMode } from "./cmux-preview.js";
 import {
   attachmentToBase64,
   importPastedImagePaths,
@@ -133,6 +133,7 @@ const COMPLETABLE_COMMANDS = [
   "/audio",
   "/record",
   "/images",
+  "/mention",
   "/faces",
   "/stickers",
   "/echo",
@@ -182,6 +183,7 @@ export function App() {
   const qqRef = useRef<QQClient | null>(null);
   const loadedRef = useRef(false);
   const activeSessionRef = useRef<Contact | null>(null);
+  const contactsRef = useRef<Contact[]>([]);
   const historyRequestedRef = useRef(new Set<string>());
   const messagesRef = useRef<ChatMessage[]>([]);
   const sessionGenerationRef = useRef(0);
@@ -334,6 +336,10 @@ export function App() {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
 
+  useEffect(() => {
+    contactsRef.current = contacts;
+  }, [contacts]);
+
   function latestMessageForSession(contact: Contact) {
     return messagesRef.current.reduce<ChatMessage | null>((latest, message) => {
       if (!belongsToSession(message, contact)) return latest;
@@ -354,6 +360,20 @@ export function App() {
       );
     }
     else cmuxPreviewRef.current?.clear();
+  }
+
+  function contactForMessage(message: ChatMessage): Contact {
+    const active = activeSessionRef.current;
+    if (active && belongsToSession(message, active)) return active;
+
+    const known = contactsRef.current.find(
+      (contact) => belongsToSession(message, contact)
+    );
+    return known || {
+      id: message.contactId,
+      name: String(message.contactId),
+      type: message.chatType === "group" ? "group" : "friend",
+    };
   }
 
   useEffect(() => {
@@ -491,6 +511,15 @@ export function App() {
       messagesRef.current = [...messagesRef.current, msg];
       setMessages(messagesRef.current);
       const current = activeSessionRef.current;
+      const messageContact = contactForMessage(msg);
+      cmuxPreviewRef.current?.notifyMention(
+        messageContact,
+        msg,
+        client.getSelfId(),
+        current && belongsToSession(msg, current)
+          ? mentionLabelsRef.current
+          : undefined
+      );
       if (current && belongsToSession(msg, current)) {
         updateCmuxPreview(current, msg);
         if (messageScrollOffsetRef.current > 0) {
@@ -563,6 +592,7 @@ export function App() {
         const friends = await client.getFriendList();
         const groups = await client.getGroupList();
         const all = [...friends, ...groups];
+        contactsRef.current = all;
         setContacts(all);
         setStatusMsg(`${all.length} sessions indexed`);
       } catch {
@@ -1627,6 +1657,28 @@ export function App() {
         } else {
           setStatusMsg("Usage: /images off|inline");
         }
+        setInputText("");
+        break;
+      }
+      case "/mention": {
+        const normalized = args.trim().toLowerCase();
+        if (!normalized) {
+          setStatusMsg(
+            `Mention alerts ${cmuxPreviewRef.current?.getMentionMode() || "direct"}`
+          );
+          setInputText("");
+          break;
+        }
+
+        const nextMode = parseCmuxMentionMode(normalized);
+        if (!nextMode) {
+          setStatusMsg("Usage: /mention direct|off|all");
+          setInputText("");
+          break;
+        }
+
+        cmuxPreviewRef.current?.setMentionMode(nextMode);
+        setStatusMsg(`Mention alerts ${nextMode}`);
         setInputText("");
         break;
       }

@@ -7,7 +7,7 @@ import type {
   Contact,
   MentionLabelLookup,
 } from "./types.js";
-import { compactMessage } from "./message-format.js";
+import { compactMessage, messageMentionsUser } from "./message-format.js";
 import { logger } from "./logger.js";
 import { truncateCells } from "./terminal-text.js";
 
@@ -15,6 +15,8 @@ const LEGACY_STATUS_KEY = "qq_cli_message";
 const MAX_HEADER_CELLS = 96;
 const MAX_BODY_CELLS = 512;
 const UPDATE_DELAY_MS = 80;
+
+export type CmuxMentionMode = "off" | "direct" | "all";
 
 function resolveCmuxCliPath() {
   const configured = process.env.QQ_CLI_CMUX_PATH?.trim();
@@ -57,6 +59,17 @@ function cmuxMode() {
   return mode === "off" || mode === "on" ? mode : "auto";
 }
 
+export function parseCmuxMentionMode(value: string): CmuxMentionMode | null {
+  const mode = value.trim().toLowerCase();
+  return mode === "off" || mode === "direct" || mode === "all"
+    ? mode
+    : null;
+}
+
+function cmuxMentionMode(): CmuxMentionMode {
+  return parseCmuxMentionMode(process.env.QQ_CLI_CMUX_MENTION || "") || "direct";
+}
+
 function cleanPreview(value: string) {
   return value
     .replace(/[\u0000-\u001f\u007f\u001b]/g, " ")
@@ -91,15 +104,18 @@ export class CmuxPreview {
   private readonly cliPath: string | null;
   private readonly workspaceId: string;
   private readonly enabled: boolean;
+  private mentionMode: CmuxMentionMode;
   private pendingDescription: string | null | undefined;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private running = false;
   private failed = false;
+  private notificationFailed = false;
   private disposed = false;
 
   constructor() {
     this.cliPath = resolveCmuxCliPath();
     this.workspaceId = process.env.CMUX_WORKSPACE_ID?.trim() || "";
+    this.mentionMode = cmuxMentionMode();
     const mode = cmuxMode();
     this.enabled =
       mode !== "off" &&
@@ -127,6 +143,70 @@ export class CmuxPreview {
       mentionLabels
     );
     this.scheduleFlush();
+  }
+
+  getMentionMode() {
+    return this.mentionMode;
+  }
+
+  setMentionMode(mode: CmuxMentionMode) {
+    this.mentionMode = mode;
+  }
+
+  notifyMention(
+    contact: Contact,
+    message: ChatMessage,
+    selfId: number,
+    mentionLabels?: MentionLabelLookup
+  ) {
+    if (
+      !this.enabled ||
+      !this.cliPath ||
+      this.disposed ||
+      this.notificationFailed ||
+      this.mentionMode === "off" ||
+      message.isMine ||
+      !messageMentionsUser(message, selfId, {
+        includeAll: this.mentionMode === "all",
+      })
+    ) {
+      return;
+    }
+
+    const sender = cleanPreview(message.senderName || String(message.senderId));
+    const title = truncateCells(
+      cleanPreview(`QQ · ${contact.name}`),
+      MAX_HEADER_CELLS
+    );
+    const subtitle = truncateCells(
+      cleanPreview(`${sender} mentioned you`),
+      MAX_HEADER_CELLS
+    );
+    const body = truncateCells(
+      cleanPreview(compactMessage(message, {
+        imageMode: "off",
+        mentionLabels,
+      })) || "(empty)",
+      MAX_BODY_CELLS
+    );
+    const args = [
+      "notify",
+      "--title",
+      title,
+      "--subtitle",
+      subtitle,
+      "--body",
+      body,
+    ];
+    if (this.workspaceId) args.push("--workspace", this.workspaceId);
+
+    execFile(this.cliPath, args, { env: process.env }, (error) => {
+      if (!error) return;
+      this.notificationFailed = true;
+      logger.warn("cmux mention notification failed", {
+        error: error.message,
+      });
+    });
   }
 
   clear() {

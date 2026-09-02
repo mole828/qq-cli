@@ -26,6 +26,7 @@ qq-cli 的界面目标是做成一个低干扰的终端消息工作台，而不�
 - 在群聊 composer 中通过 `@` 触发群成员提及候选
 - 通过 `/audio <path>`（或 `/record <path>`）发送独立语音消息，支持 `~`、相对路径、`file://` 和 Tab 路径补全
 - 接收并展示私聊、群聊消息
+- 被群成员 `@` 当前账号时，通过 cmux 发送提醒
 - 使用 `/session` 临时会话面板切换聊天
 - 在会话面板中显示未读数和最近消息摘要
 - 压缩 CQ 消息段，例如图片、回复、@、语音、视频等，避免长协议串挤压界面
@@ -98,11 +99,20 @@ QQ_CLI_IMAGE_MODE=inline npm run dev
 
 消息之间默认不留空行。需要恢复更松散的间距时，可以设置 `QQ_CLI_MESSAGE_GAP=1`。
 
-如果在 cmux workspace 中运行，qq-cli 会把当前会话最新的一条消息写入 workspace description，显示在 cmux 侧栏标题下方；它不会调用 notification/alert。第一行显示会话和发送者，第二行开始显示压缩后的正文。短时间内连续到达的消息会合并，只保留最后一条待写入内容；正文最多保留约 512 个终端单元格，cmux description 最多显示 12 行。默认自动检测 cmux；需要关闭时可以设置：
+如果在 cmux workspace 中运行，qq-cli 会把当前会话最新的一条消息写入 workspace description，显示在 cmux 侧栏标题下方；默认只在收到明确提及当前账号的消息时调用 `cmux notify` 发送提醒，`@全体成员` 不会触发。第一行显示会话和发送者，第二行开始显示压缩后的正文。短时间内连续到达的消息会合并，只保留最后一条待写入内容；正文最多保留约 512 个终端单元格，cmux description 最多显示 12 行。默认自动检测 cmux；需要关闭整个 cmux 集成时可以设置：
 
 ```bash
 QQ_CLI_CMUX=off npm run dev
 ```
+
+提醒可以单独控制。默认模式是 `direct`；设置为 `off` 可关闭提醒，设置为 `all` 才会把 `@全体成员` 也作为提醒：
+
+```bash
+QQ_CLI_CMUX_MENTION=off npm run dev
+QQ_CLI_CMUX_MENTION=all npm run dev
+```
+
+运行期间也可以在 composer 中使用 `/mention direct`、`/mention off` 或 `/mention all` 修改，直接输入 `/mention` 可查看当前模式；应用重启后会重新读取 `QQ_CLI_CMUX_MENTION`。
 
 如果需要清理旧版本遗留的 status，且 cmux CLI 不在 `PATH` 中，可以显式指定路径：
 
@@ -110,7 +120,7 @@ QQ_CLI_CMUX=off npm run dev
 QQ_CLI_CMUX_PATH=/Applications/cmux.app/Contents/Resources/bin/cmux npm run dev
 ```
 
-此前版本已经产生的 notification history 不会被新通道自动删除；清理一次 cmux 通知面板后，qq-cli 后续不会再新增这类通知。
+提醒仅针对运行期间新收到的消息，不会因为打开历史记录而重复触发；此前版本已经产生的 notification history 不会被新通道自动删除。
 
 ## 本地历史复现
 
@@ -170,6 +180,7 @@ NapCat 的配置、插件和 QQ 登录数据会分别保存在：
 | `/groups [关键词]` 或 `/g` | 搜索群聊 |
 | `/friends [关键词]` 或 `/f` | 搜索好友 |
 | `/images off\|inline` | 设置图片显示模式 |
+| `/mention [direct\|off\|all]` | 设置 cmux @提醒；默认只提醒明确 @ 当前账号 |
 | `/faces [refresh]` | 加载并浏览自定义表情；`refresh` 清理临时索引后重载，按 Esc 返回 composer |
 | `/audio <path>` 或 `/record <path>` | 发送独立语音消息；支持 `~`、相对路径、`file://` 和 Tab 补全 |
 | `/echo` | 在当前群聊最近 10 条消息中找到最新的重复消息并发送 |
