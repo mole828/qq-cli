@@ -101,6 +101,7 @@ export function HistoryApp({
         composerCursor: 0,
         replyTarget: null,
         unreadTotal: 0,
+        mentionTotal: 0,
         inlinePickerOpen: false,
         inlinePickerQuery: "",
         inlinePickerItems: [],

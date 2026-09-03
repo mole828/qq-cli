@@ -27,6 +27,7 @@ qq-cli 的界面目标是做成一个低干扰的终端消息工作台，而不�
 - 通过 `/audio <path>`（或 `/record <path>`）发送独立语音消息，支持 `~`、相对路径、`file://` 和 Tab 路径补全
 - 接收并展示私聊、群聊消息
 - 被群成员 `@` 当前账号时，通过 cmux 发送提醒
+- 在会话切换面板和状态栏单独显示收到的提及数量
 - 使用 `/session` 临时会话面板切换聊天
 - 在会话面板中显示未读数和最近消息摘要
 - 压缩 CQ 消息段，例如图片、回复、@、语音、视频等，避免长协议串挤压界面
@@ -121,6 +122,8 @@ QQ_CLI_CMUX_PATH=/Applications/cmux.app/Contents/Resources/bin/cmux npm run dev
 ```
 
 提醒仅针对运行期间新收到的消息，不会因为打开历史记录而重复触发；此前版本已经产生的 notification history 不会被新通道自动删除。
+
+运行期间新收到的直接提及和 `@全体成员` 会单独累计为 `mention`，不会和 `unread` 合并；打开 cmux 提醒只负责聚焦对应 workspace，不会自动切换 qq-cli 会话。
 
 ## 本地历史复现
 

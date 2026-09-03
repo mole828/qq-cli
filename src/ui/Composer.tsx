@@ -27,6 +27,7 @@ interface ComposerProps {
   replyTarget: ReplyTarget | null;
   connected: boolean;
   unreadTotal: number;
+  mentionTotal: number;
   termWidth: number;
   imageMode: ImageMode;
   inlinePickerOpen?: boolean;
@@ -52,6 +53,7 @@ export function Composer({
   replyTarget,
   connected,
   unreadTotal,
+  mentionTotal,
   termWidth,
   imageMode,
   inlinePickerOpen = false,
@@ -186,6 +188,11 @@ export function Composer({
             </Text>
             {unreadTotal > 0 && (
               <Text color="yellow"> · {unreadTotal} unread</Text>
+            )}
+            {mentionTotal > 0 && (
+              <Text color="magenta">
+                {` · ${mentionTotal} mention${mentionTotal === 1 ? "" : "s"}`}
+              </Text>
             )}
             {replyLabel && (
               <Text color="cyan" wrap="truncate-end">

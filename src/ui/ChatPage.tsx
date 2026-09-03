@@ -32,6 +32,7 @@ export interface ChatPageState {
   composerCursor: number;
   replyTarget: ReplyTarget | null;
   unreadTotal: number;
+  mentionTotal: number;
   inlinePickerOpen: boolean;
   inlinePickerQuery: string;
   inlinePickerItems: InlineInsertItem[];
@@ -121,6 +122,7 @@ export function ChatPage({
         replyTarget={state.replyTarget}
         connected={state.connected}
         unreadTotal={state.unreadTotal}
+        mentionTotal={state.mentionTotal}
         termWidth={termWidth}
         parts={state.composerParts}
         cursorOffset={state.composerCursor}

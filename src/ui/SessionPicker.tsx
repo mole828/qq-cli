@@ -10,16 +10,19 @@ interface SessionPickerProps {
   scrollOffset: number;
   maxHeight: number;
   unreadCounts: Record<number, number>;
+  mentionCounts: Record<string, number>;
   lastMessageByContact: Map<string, ChatMessage>;
   selfId: number;
   termWidth: number;
   unreadTotal: number;
+  mentionTotal: number;
 }
 
 function ContactLine({
   contact,
   highlighted,
   unreadCounts,
+  mentionCounts,
   lastMessageByContact,
   selfId,
   termWidth,
@@ -27,6 +30,7 @@ function ContactLine({
   contact: Contact;
   highlighted: boolean;
   unreadCounts: Record<number, number>;
+  mentionCounts: Record<string, number>;
   lastMessageByContact: Map<string, ChatMessage>;
   selfId: number;
   termWidth: number;
@@ -34,6 +38,7 @@ function ContactLine({
   const marker = highlighted ? "›" : " ";
   const icon = contact.type === "group" ? "#" : "@";
   const unread = unreadCounts[contact.id] || 0;
+  const mentions = mentionCounts[`${contact.type}:${contact.id}`] || 0;
   const lastMessage = lastMessageByContact.get(
     `${contact.type}:${contact.id}`
   );
@@ -42,11 +47,18 @@ function ContactLine({
     : contact.type === "group"
     ? "Channel session"
     : "Direct session";
-  const meta =
-    unread > 0
-      ? `${unread > 99 ? "99+" : unread} unread`
-      : `${contact.type}:${contact.id}`;
-  const metaWidth = unread > 0 ? 10 : contact.type === "group" ? 18 : 20;
+  const metaParts = [
+    unread > 0 ? `${unread > 99 ? "99+" : unread} unread` : "",
+    mentions > 0
+      ? `${mentions > 99 ? "99+" : mentions} mention${mentions === 1 ? "" : "s"}`
+      : "",
+  ].filter(Boolean);
+  const meta = metaParts.length > 0
+    ? metaParts.join(" · ")
+    : `${contact.type}:${contact.id}`;
+  const metaWidth = metaParts.length > 0
+    ? Math.max(meta.length, 10)
+    : contact.type === "group" ? 18 : 20;
   const nameWidth = Math.min(Math.max(Math.floor(termWidth * 0.28), 18), 36);
   const previewWidth = Math.max(termWidth - nameWidth - metaWidth - 8, 8);
 
@@ -67,9 +79,9 @@ function ContactLine({
         </Text>
       </Box>
       <Text
-        color={unread > 0 ? "green" : "gray"}
-        bold={unread > 0}
-        dimColor={unread === 0}
+        color={mentions > 0 ? "magenta" : unread > 0 ? "green" : "gray"}
+        bold={unread > 0 || mentions > 0}
+        dimColor={unread === 0 && mentions === 0}
         wrap="truncate-end"
       >
         {truncateCells(meta, metaWidth)}
@@ -84,10 +96,12 @@ export function SessionPicker({
   scrollOffset,
   maxHeight,
   unreadCounts,
+  mentionCounts,
   lastMessageByContact,
   selfId,
   termWidth,
   unreadTotal,
+  mentionTotal,
 }: SessionPickerProps) {
   return (
     <Box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1}>
@@ -95,6 +109,9 @@ export function SessionPicker({
         <Text bold>• Select session</Text>
         <Text dimColor>
           {unreadTotal > 0 ? `${unreadTotal} unread · ` : ""}
+          {mentionTotal > 0
+            ? `${mentionTotal} mention${mentionTotal === 1 ? "" : "s"} · `
+            : ""}
           {contacts.length} match{contacts.length !== 1 ? "es" : ""}
         </Text>
       </Box>
@@ -107,6 +124,7 @@ export function SessionPicker({
           contact={contact}
           highlighted={scrollOffset + i === highlightIndex}
           unreadCounts={unreadCounts}
+          mentionCounts={mentionCounts}
           lastMessageByContact={lastMessageByContact}
           selfId={selfId}
           termWidth={termWidth}

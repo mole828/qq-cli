@@ -40,6 +40,7 @@ import {
   compactMessage,
   getForwardIdsFromText,
   getForwardSegmentId,
+  messageMentionsUser,
 } from "./message-format.js";
 import {
   cloneEchoContent,
@@ -215,6 +216,7 @@ export function App() {
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+  const [mentionCounts, setMentionCounts] = useState<Record<string, number>>({});
   const [helpMode, setHelpMode] = useState(false);
   const [forwardStack, setForwardStack] = useState<ForwardView[]>([]);
   const [forwardScrollOffset, setForwardScrollOffset] = useState(0);
@@ -512,6 +514,16 @@ export function App() {
       setMessages(messagesRef.current);
       const current = activeSessionRef.current;
       const messageContact = contactForMessage(msg);
+      const messageSessionKey = sessionKey(messageContact);
+      const isMention = !msg.isMine && messageMentionsUser(msg, client.getSelfId(), {
+        includeAll: true,
+      });
+      if (isMention) {
+        setMentionCounts((prev) => ({
+          ...prev,
+          [messageSessionKey]: (prev[messageSessionKey] || 0) + 1,
+        }));
+      }
       cmuxPreviewRef.current?.notifyMention(
         messageContact,
         msg,
@@ -1844,6 +1856,7 @@ export function App() {
   }
 
   const unreadTotal = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
+  const mentionTotal = Object.values(mentionCounts).reduce((sum, count) => sum + count, 0);
   const activeMessages = activeSession
     ? messages.filter((message) => belongsToSession(message, activeSession))
     : [];
@@ -1880,6 +1893,7 @@ export function App() {
           composerCursor,
           replyTarget,
           unreadTotal,
+          mentionTotal,
           inlinePickerOpen,
           inlinePickerQuery: inlineTrigger?.query || "",
           inlinePickerItems,
@@ -1933,10 +1947,12 @@ export function App() {
             scrollOffset={modalScrollOff}
             maxHeight={maxModalHeight}
             unreadCounts={unreadCounts}
+            mentionCounts={mentionCounts}
             lastMessageByContact={lastMessageByContact}
             selfId={selfId}
             termWidth={termWidth}
             unreadTotal={unreadTotal}
+            mentionTotal={mentionTotal}
           />
         ) : facesMode ? (
           <FacePanel
@@ -1993,6 +2009,7 @@ export function App() {
         replyTarget={replyTarget}
         connected={connected}
         unreadTotal={unreadTotal}
+        mentionTotal={mentionTotal}
         termWidth={termWidth}
         imageMode={imageMode}
         inlinePickerOpen={inlinePickerOpen}
