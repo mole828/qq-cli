@@ -9,7 +9,7 @@ interface SessionPickerProps {
   highlightIndex: number;
   scrollOffset: number;
   maxHeight: number;
-  unreadCounts: Record<number, number>;
+  unreadCounts: Record<string, number>;
   mentionCounts: Record<string, number>;
   lastMessageByContact: Map<string, ChatMessage>;
   selfId: number;
@@ -29,7 +29,7 @@ function ContactLine({
 }: {
   contact: Contact;
   highlighted: boolean;
-  unreadCounts: Record<number, number>;
+  unreadCounts: Record<string, number>;
   mentionCounts: Record<string, number>;
   lastMessageByContact: Map<string, ChatMessage>;
   selfId: number;
@@ -37,7 +37,7 @@ function ContactLine({
 }) {
   const marker = highlighted ? "›" : " ";
   const icon = contact.type === "group" ? "#" : "@";
-  const unread = unreadCounts[contact.id] || 0;
+  const unread = unreadCounts[`${contact.type}:${contact.id}`] || 0;
   const mentions = mentionCounts[`${contact.type}:${contact.id}`] || 0;
   const lastMessage = lastMessageByContact.get(
     `${contact.type}:${contact.id}`

@@ -93,6 +93,16 @@ function sessionKey(contact: Contact) {
   return `${contact.type}:${contact.id}`;
 }
 
+function clearSessionCount(
+  counts: Record<string, number>,
+  key: string
+) {
+  if (!(key in counts)) return counts;
+  const next = { ...counts };
+  delete next[key];
+  return next;
+}
+
 function contactSearchRank(contact: Contact, query: string) {
   const name = contact.name.toLowerCase();
   const id = String(contact.id);
@@ -215,7 +225,7 @@ export function App() {
   const [composerCursor, setComposerCursor] = useState(0);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
-  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [mentionCounts, setMentionCounts] = useState<Record<string, number>>({});
   const [helpMode, setHelpMode] = useState(false);
   const [forwardStack, setForwardStack] = useState<ForwardView[]>([]);
@@ -515,10 +525,13 @@ export function App() {
       const current = activeSessionRef.current;
       const messageContact = contactForMessage(msg);
       const messageSessionKey = sessionKey(messageContact);
+      const isCurrentSession = Boolean(
+        current && belongsToSession(msg, current)
+      );
       const isMention = !msg.isMine && messageMentionsUser(msg, client.getSelfId(), {
         includeAll: true,
       });
-      if (isMention) {
+      if (isMention && !isCurrentSession) {
         setMentionCounts((prev) => ({
           ...prev,
           [messageSessionKey]: (prev[messageSessionKey] || 0) + 1,
@@ -532,7 +545,7 @@ export function App() {
           ? mentionLabelsRef.current
           : undefined
       );
-      if (current && belongsToSession(msg, current)) {
+      if (current && isCurrentSession) {
         updateCmuxPreview(current, msg);
         if (messageScrollOffsetRef.current > 0) {
           const viewport = messageViewportRef.current;
@@ -559,7 +572,7 @@ export function App() {
       if (msg.isMine) return;
       setUnreadCounts((prev) => ({
         ...prev,
-        [msg.contactId]: (prev[msg.contactId] || 0) + 1,
+        [messageSessionKey]: (prev[messageSessionKey] || 0) + 1,
       }));
     });
 
@@ -1464,6 +1477,7 @@ export function App() {
 
   function handleSession(contact: Contact) {
     if (contacts.some((item) => sessionKey(item) === sessionKey(contact))) {
+      const key = sessionKey(contact);
       const generation = sessionGenerationRef.current + 1;
       sessionGenerationRef.current = generation;
       messageScrollOffsetRef.current = 0;
@@ -1473,12 +1487,8 @@ export function App() {
       activeSessionRef.current = contact;
       setActiveSession(contact);
       updateCmuxPreview(contact);
-      setUnreadCounts((prev) => {
-        if (!prev[contact.id]) return prev;
-        const next = { ...prev };
-        delete next[contact.id];
-        return next;
-      });
+      setUnreadCounts((prev) => clearSessionCount(prev, key));
+      setMentionCounts((prev) => clearSessionCount(prev, key));
       void loadHistory(contact, generation);
     }
   }
