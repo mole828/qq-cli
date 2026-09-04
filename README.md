@@ -107,7 +107,7 @@ QQ_CLI_IMAGE_MODE=inline npm run dev
 QQ_CLI_CMUX=off npm run dev
 ```
 
-提醒可以单独控制。默认模式是 `direct`；设置为 `off` 可关闭提醒，设置为 `all` 才会把 `@全体成员` 也作为提醒：
+mention 模式同时控制 cmux 提醒和未查看 mention 计数。默认模式是 `direct`；设置为 `off` 可关闭 mention 提示和计数，设置为 `all` 才会把 `@全体成员` 也作为 mention：
 
 ```bash
 QQ_CLI_CMUX_MENTION=off npm run dev
@@ -124,7 +124,7 @@ QQ_CLI_CMUX_PATH=/Applications/cmux.app/Contents/Resources/bin/cmux npm run dev
 
 提醒仅针对运行期间新收到的消息，不会因为打开历史记录而重复触发；此前版本已经产生的 notification history 不会被新通道自动删除。
 
-运行期间在非当前会话中新收到的直接提及和 `@全体成员` 会单独累计为 `mention`，不会和 `unread` 合并；打开 cmux 提醒只负责聚焦对应 workspace，不会自动切换 qq-cli 会话。
+运行期间在非当前会话中新收到的 mention 会按当前模式单独累计为 `mention`，不会和 `unread` 合并；`direct` 只统计明确提及当前账号，`all` 也统计 `@全体成员`，`off` 不统计 mention；消息仍会计入普通 `unread`。打开 cmux 提醒只负责聚焦对应 workspace，不会自动切换 qq-cli 会话。
 
 在会话选择器中真正进入某个会话后，该会话已有的 `unread` 和 `mention` 会一起清除；选择器中仅移动高亮不会清除状态。composer 和选择器顶部显示的是所有会话的合计数，因此进入一个会话后仍显示数字时，表示其他会话还有待处理消息。
 
@@ -186,7 +186,7 @@ NapCat 的配置、插件和 QQ 登录数据会分别保存在：
 | `/groups [关键词]` 或 `/g` | 搜索群聊 |
 | `/friends [关键词]` 或 `/f` | 搜索好友 |
 | `/images off\|inline` | 设置图片显示模式 |
-| `/mention [direct\|off\|all]` | 设置 cmux @提醒；默认只提醒明确 @ 当前账号 |
+| `/mention [direct\|off\|all]` | 设置 mention 模式和 cmux @提醒；默认只统计明确 @ 当前账号 |
 | `/faces [refresh]` | 加载并浏览自定义表情；`refresh` 清理临时索引后重载，按 Esc 返回 composer |
 | `/audio <path>` 或 `/record <path>` | 发送独立语音消息；支持 `~`、相对路径、`file://` 和 Tab 补全 |
 | `/echo` | 在当前群聊最近 10 条消息中找到最新的重复消息并发送 |

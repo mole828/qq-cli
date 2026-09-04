@@ -8,7 +8,7 @@ export const HELP_ROWS = [
   ["/friends [query]", "Search direct sessions"],
   ["/audio <path>", "Send a standalone audio message"],
   ["/images off|inline", "Set image display mode"],
-  ["/mention <mode>", "Set cmux mention alerts: direct, off, or all"],
+  ["/mention <mode>", "Set mention mode: direct, off, or all"],
   ["/faces [refresh]", "Add custom faces to the composer when supported"],
   ["/echo", "Repeat the latest duplicate message in a group"],
   ["/forward <message-id>", "Inspect a merged forward message"],

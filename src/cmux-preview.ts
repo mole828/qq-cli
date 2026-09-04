@@ -66,7 +66,7 @@ export function parseCmuxMentionMode(value: string): CmuxMentionMode | null {
     : null;
 }
 
-function cmuxMentionMode(): CmuxMentionMode {
+export function getInitialCmuxMentionMode(): CmuxMentionMode {
   return parseCmuxMentionMode(process.env.QQ_CLI_CMUX_MENTION || "") || "direct";
 }
 
@@ -115,7 +115,7 @@ export class CmuxPreview {
   constructor() {
     this.cliPath = resolveCmuxCliPath();
     this.workspaceId = process.env.CMUX_WORKSPACE_ID?.trim() || "";
-    this.mentionMode = cmuxMentionMode();
+    this.mentionMode = getInitialCmuxMentionMode();
     const mode = cmuxMode();
     this.enabled =
       mode !== "off" &&

@@ -23,7 +23,12 @@ import type {
   StickerItem,
 } from "./types.js";
 import { QQClient } from "./qq-client.js";
-import { CmuxPreview, parseCmuxMentionMode } from "./cmux-preview.js";
+import {
+  CmuxPreview,
+  getInitialCmuxMentionMode,
+  parseCmuxMentionMode,
+  type CmuxMentionMode,
+} from "./cmux-preview.js";
 import {
   attachmentToBase64,
   importPastedImagePaths,
@@ -91,6 +96,34 @@ function clamp(v: number, lo: number, hi: number) {
 
 function sessionKey(contact: Contact) {
   return `${contact.type}:${contact.id}`;
+}
+
+function messageSessionKey(message: ChatMessage) {
+  return `${message.chatType === "group" ? "group" : "friend"}:${message.contactId}`;
+}
+
+function buildMentionCounts(
+  messages: Iterable<ChatMessage>,
+  selfId: number,
+  mode: CmuxMentionMode
+) {
+  if (mode === "off") return {};
+
+  const counts: Record<string, number> = {};
+  for (const message of messages) {
+    if (
+      message.isMine ||
+      !messageMentionsUser(message, selfId, {
+        includeAll: mode === "all",
+      })
+    ) {
+      continue;
+    }
+
+    const key = messageSessionKey(message);
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return counts;
 }
 
 function clearSessionCount(
@@ -209,6 +242,8 @@ export function App() {
   const groupMemberRequestRef = useRef(0);
   const groupMembersCacheRef = useRef(new Map<number, GroupMember[]>());
   const mentionLabelsRef = useRef<MentionLabelLookup>(new Map());
+  const mentionModeRef = useRef<CmuxMentionMode>(getInitialCmuxMentionMode());
+  const pendingMentionMessagesRef = useRef(new Map<string, ChatMessage>());
   const forwardRequestRef = useRef(0);
 
   const [connected, setConnected] = useState(false);
@@ -388,6 +423,16 @@ export function App() {
     };
   }
 
+  function refreshMentionCounts(mode: CmuxMentionMode, currentSelfId: number) {
+    setMentionCounts(
+      buildMentionCounts(
+        pendingMentionMessagesRef.current.values(),
+        currentSelfId,
+        mode
+      )
+    );
+  }
+
   useEffect(() => {
     messageScrollOffsetRef.current = messageScrollOffset;
   }, [messageScrollOffset]);
@@ -532,10 +577,8 @@ export function App() {
         includeAll: true,
       });
       if (isMention && !isCurrentSession) {
-        setMentionCounts((prev) => ({
-          ...prev,
-          [messageSessionKey]: (prev[messageSessionKey] || 0) + 1,
-        }));
+        pendingMentionMessagesRef.current.set(key, msg);
+        refreshMentionCounts(mentionModeRef.current, client.getSelfId());
       }
       cmuxPreviewRef.current?.notifyMention(
         messageContact,
@@ -1488,7 +1531,15 @@ export function App() {
       setActiveSession(contact);
       updateCmuxPreview(contact);
       setUnreadCounts((prev) => clearSessionCount(prev, key));
-      setMentionCounts((prev) => clearSessionCount(prev, key));
+      for (const [messageKey, message] of pendingMentionMessagesRef.current) {
+        if (messageSessionKey(message) === key) {
+          pendingMentionMessagesRef.current.delete(messageKey);
+        }
+      }
+      refreshMentionCounts(
+        mentionModeRef.current,
+        qqRef.current?.getSelfId() || selfId
+      );
       void loadHistory(contact, generation);
     }
   }
@@ -1686,7 +1737,7 @@ export function App() {
         const normalized = args.trim().toLowerCase();
         if (!normalized) {
           setStatusMsg(
-            `Mention alerts ${cmuxPreviewRef.current?.getMentionMode() || "direct"}`
+            `Mention mode ${mentionModeRef.current}`
           );
           setInputText("");
           break;
@@ -1699,8 +1750,13 @@ export function App() {
           break;
         }
 
+        mentionModeRef.current = nextMode;
         cmuxPreviewRef.current?.setMentionMode(nextMode);
-        setStatusMsg(`Mention alerts ${nextMode}`);
+        refreshMentionCounts(
+          nextMode,
+          qqRef.current?.getSelfId() || selfId
+        );
+        setStatusMsg(`Mention mode ${nextMode}`);
         setInputText("");
         break;
       }
