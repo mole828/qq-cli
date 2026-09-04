@@ -198,6 +198,26 @@ function quoteTagValue(value: string) {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function structuredTag(
+  type: string,
+  attrs: Array<[string, string]>
+) {
+  const values = attrs
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${key}="${quoteTagValue(value)}"`);
+  return values.length ? `[${type},${values.join(",")}]` : `[${type}]`;
+}
+
 function resourceTag(
   type: string,
   data: Record<string, string>,
@@ -224,6 +244,39 @@ function shareTag(data: Record<string, string>, terminalLinks = false) {
   return attrs.length ? `[share,${attrs.join(",")}]` : "[share]";
 }
 
+function compactBilibiliJson(
+  payload: Record<string, unknown>,
+  terminalLinks = false
+) {
+  const meta = objectValue(payload.meta);
+  const detail = objectValue(meta?.detail_1);
+  if (!detail) return null;
+
+  const title = stringValue(detail.desc);
+  const appTitle = stringValue(detail.title);
+  const prompt = stringValue(payload.prompt)
+    .replace(/^\[(?:QQ小程序|分享)\]/, "")
+    .trim();
+  const cardTitle = title || (prompt && prompt !== appTitle ? prompt : "");
+  const url =
+    stringValue(detail.qqdocurl) ||
+    stringValue(detail.jumpUrl) ||
+    stringValue(detail.url);
+  const isBilibili =
+    stringValue(detail.appid) === "1109937557" ||
+    appTitle === "哔哩哔哩" ||
+    /(?:^|\.)b23\.tv\//i.test(url);
+  if (!isBilibili) return null;
+
+  const tag = structuredTag("bilibili", [
+    ["title", cardTitle],
+    ["url", url],
+  ]);
+  return terminalLinks && url && isWebUrl(url)
+    ? terminalLink(tag, url, true)
+    : tag;
+}
+
 function compactNewsJson(data: Record<string, string>, terminalLinks = false) {
   if (!data.data) return "[json]";
 
@@ -231,7 +284,13 @@ function compactNewsJson(data: Record<string, string>, terminalLinks = false) {
     const payload = JSON.parse(data.data) as unknown;
     if (!payload || typeof payload !== "object") return "[json]";
 
-    const meta = (payload as { meta?: unknown }).meta;
+    const payloadObject = objectValue(payload);
+    if (!payloadObject) return "[json]";
+
+    const bilibili = compactBilibiliJson(payloadObject, terminalLinks);
+    if (bilibili) return bilibili;
+
+    const meta = payloadObject.meta;
     if (!meta || typeof meta !== "object") return "[json]";
 
     const news = (meta as { news?: unknown }).news;
