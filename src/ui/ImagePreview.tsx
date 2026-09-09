@@ -1,18 +1,20 @@
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { rmSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import React, { useEffect, useSyncExternalStore } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { Box, Text } from "ink";
 import Image, { useTerminalInfo } from "ink-picture";
 import { Jimp } from "jimp";
+import { prepareGif, type GifAnimation } from "../gif.js";
 import { logger } from "../logger.js";
 import type { ImageSourceResolver } from "../types.js";
 
 interface ImagePreviewProps {
   source: string;
+  animate?: boolean;
   height?: number;
   maxWidth?: number;
   clipped?: boolean;
@@ -371,8 +373,54 @@ export function containImageInCells(
   };
 }
 
+// Keep multi-frame decoding and repaint timers out of the normal transcript.
+function ExperimentalGifPreview({ source, width, height, forceHalfBlock }: {
+  source: string; width: number; height: number; forceHalfBlock: boolean;
+}) {
+  const [animation, setAnimation] = useState<GifAnimation>();
+  useEffect(() => {
+    let disposed = false;
+    void readFile(source).then(prepareGif).then(result => {
+      if (!disposed) setAnimation(result);
+    }).catch(() => {});
+    return () => { disposed = true; };
+  }, [source]);
+  return animation
+    ? <AnimatedPreview animation={animation} width={width} height={height} forceHalfBlock={forceHalfBlock} />
+    : <Image src={source} width={width} height={height}
+        protocol={forceHalfBlock ? "halfBlock" : undefined} alt="[image]" />;
+}
+
+function AnimatedPreview({ animation, width, height, forceHalfBlock }: {
+  animation: GifAnimation; width: number; height: number; forceHalfBlock: boolean;
+}) {
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    let index = 0;
+    let repeats = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    setFrame(0);
+    function advance() {
+      timer = setTimeout(() => {
+        if (index === animation.frames.length - 1) {
+          if (animation.loops === null || (animation.loops !== 0 && repeats >= animation.loops)) return;
+          repeats++;
+        }
+        index = (index + 1) % animation.frames.length;
+        setFrame(index);
+        advance();
+      }, animation.frames[index]!.delay);
+    }
+    advance();
+    return () => clearTimeout(timer);
+  }, [animation]);
+  return <Image src={animation.frames[frame]?.source ?? animation.frames[0]!.source}
+    protocol={forceHalfBlock ? "halfBlock" : undefined} width={width} height={height} alt="[gif]" />;
+}
+
 export function ImagePreview({
   source,
+  animate = false,
   height = IMAGE_PREVIEW_HEIGHT,
   maxWidth = IMAGE_PREVIEW_WIDTH,
   clipped = false,
@@ -411,7 +459,9 @@ export function ImagePreview({
       overflow="hidden"
     >
       {preparedImage && previewSize ? (
-        <Image
+        animate ? <ExperimentalGifPreview key={preparedImage.renderSource} source={preparedImage.renderSource}
+          width={previewSize.width} height={previewSize.height}
+          forceHalfBlock={clipped || forceHalfBlock} /> : <Image
           key={`${terminalInfo.cellWidth}x${terminalInfo.cellHeight}`}
           src={preparedImage.renderSource}
           protocol={clipped || forceHalfBlock ? "halfBlock" : undefined}
