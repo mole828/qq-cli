@@ -9,6 +9,7 @@ import { Box, Text } from "ink";
 import Image, { useTerminalInfo } from "ink-picture";
 import { Jimp } from "jimp";
 import { prepareGif, type GifAnimation } from "../gif.js";
+import { setImageFormat } from "../image-format.js";
 import { logger } from "../logger.js";
 import type { ImageSourceResolver } from "../types.js";
 
@@ -35,6 +36,7 @@ interface ImageDimensions {
 }
 
 interface PreparedImage {
+  mime?: string;
   dimensions: ImageDimensions;
   renderSource: string;
 }
@@ -70,6 +72,7 @@ function evictImageCache() {
 
     imageMetadataCache.delete(candidate);
     preparedImageCache.delete(candidate);
+    setImageFormat(candidate);
     imageFailureTime.delete(candidate);
     if (imageMetadataCache.size <= MAX_IMAGE_CACHE_SIZE) return;
   }
@@ -107,6 +110,7 @@ export function usePinnedImageSources(sources: readonly string[]) {
 
 function publishPreparedImage(source: string, image: PreparedImage | null) {
   preparedImageCache.set(source, image);
+  setImageFormat(source, image?.mime);
   if (image) imageFailureTime.delete(source);
   else imageFailureTime.set(source, Date.now());
   metadataVersion += 1;
@@ -140,6 +144,7 @@ function prepareImage(
         renderSource: await cacheRenderSource(source, loadedSource),
       }))
       .then(({ image, renderSource }) => ({
+        mime: image.mime,
         dimensions: {
           width: image.bitmap.width,
           height: image.bitmap.height,

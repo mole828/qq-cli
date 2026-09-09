@@ -7,6 +7,8 @@ import type {
 import type { ImageMode } from "./config.js";
 import { isWebUrl, terminalLink } from "./terminal-text.js";
 
+import { getImageFormat } from "./image-format.js";
+
 interface CompactOptions {
   imageMode?: ImageMode;
   terminalLinks?: boolean;
@@ -181,7 +183,9 @@ export function compactCQ(raw: string, options?: CompactOptions): string {
 }
 
 export function imageToken(data: Record<string, string>, _imageMode: ImageMode) {
-  return data.summary || "[image]";
+  const source = getImageSource(data);
+  const format = source ? getImageFormat(source) : undefined;
+  return format ? `[image, ${format}]` : data.summary || "[image]";
 }
 
 function resourceEntry(
@@ -331,7 +335,7 @@ function compactSegment(
     isWebUrl(resourceUrl)
   ) {
     const label = type === "record" ? "voice" : type;
-    return terminalLink(`[${label}]`, resourceUrl, true);
+    return terminalLink(type === "image" ? imageToken(data, imageMode) : `[${label}]`, resourceUrl, true);
   }
 
   switch (type) {
