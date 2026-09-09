@@ -1,13 +1,17 @@
 import React from "react";
 import { Box, Text } from "ink";
 import {
-  composerDisplayText,
   type ComposerPart,
 } from "../composer-draft.js";
+import { getComposerInputLayout } from "../composer-layout.js";
 import type { ImageMode } from "../config.js";
 import type { Contact, InlineInsertItem, ReplyTarget } from "../types.js";
 import { textWidth, truncateCells } from "../terminal-text.js";
-import { getComposerRows } from "./layout.js";
+import {
+  getComposerBoxWidth,
+  getComposerInputWidth,
+  getComposerRows,
+} from "./layout.js";
 import { InlineInsertPanel } from "./InlineInsertPanel.js";
 import { PasteAwareTextInput } from "./PasteAwareTextInput.js";
 
@@ -63,7 +67,7 @@ export function Composer({
   inlinePickerLoading = false,
 }: ComposerProps) {
   const divider = "─".repeat(Math.max(termWidth - 2, 4));
-  const composerWidth = Math.max(termWidth - 2, 12);
+  const composerWidth = getComposerBoxWidth(termWidth);
   const composerBg = "#3a3a3a";
   const workspace = helpMode
     ? "~/help"
@@ -96,19 +100,11 @@ export function Composer({
     : activeSession
     ? "Message current session"
     : "Use /session to choose a session";
-  const inputDisplayText = composerDisplayText(parts);
   const replyPrefix = replyTarget ? "[reply] " : "";
-  const inputChromeWidth = 4 + textWidth(replyPrefix);
-  const inputVisibleWidth = Math.min(
-    Math.max(textWidth(inputDisplayText || composerPlaceholder) + 1, 1),
-    Math.max(composerWidth - inputChromeWidth - 2, 1)
-  );
-  const inputTailWidth = Math.max(
-    composerWidth - inputVisibleWidth - inputChromeWidth - 2,
-    0
-  );
   const imageModeLabel = imageMode === "inline" ? "Images: inline" : "";
-  const composerRows = getComposerRows(inlinePickerOpen);
+  const inputWidth = getComposerInputWidth(termWidth, Boolean(replyTarget));
+  const inputLayout = getComposerInputLayout(parts, cursorOffset, inputWidth, 5);
+  const composerRows = getComposerRows(inlinePickerOpen, inputLayout.height);
   const replyLabel = replyTarget
     ? truncateCells(
         ` · ↳ #${replyTarget.messageId} ${replyTarget.senderName}: ${replyTarget.preview}`,
@@ -144,7 +140,7 @@ export function Composer({
         </Box>
         <Box
           flexDirection="row"
-          height={1}
+          height={inputLayout.height}
           overflow="hidden"
           paddingX={1}
           backgroundColor={composerBg}
@@ -157,7 +153,13 @@ export function Composer({
               {replyPrefix}
             </Text>
           )}
-          <Text color="white" backgroundColor={composerBg}>
+          <Box
+            width={inputWidth}
+            height={inputLayout.height}
+            flexShrink={0}
+            overflow="hidden"
+            backgroundColor={composerBg}
+          >
             <PasteAwareTextInput
               parts={parts}
               cursorOffset={cursorOffset}
@@ -168,11 +170,10 @@ export function Composer({
               focus={!helpMode && !facesMode && !forwardMode}
               placeholder={composerPlaceholder}
               inlinePickerOpen={inlinePickerOpen}
+              width={inputWidth}
+              maxRows={5}
             />
-          </Text>
-          <Text backgroundColor={composerBg}>
-            {" ".repeat(inputTailWidth)}
-          </Text>
+          </Box>
         </Box>
         <Box height={1} backgroundColor={composerBg}>
           <Text backgroundColor={composerBg}>{" ".repeat(composerWidth)}</Text>

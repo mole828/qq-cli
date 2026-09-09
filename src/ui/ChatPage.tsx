@@ -1,3 +1,4 @@
+import { getComposerInputLayout } from "../composer-layout.js";
 import React from "react";
 import { Box, useWindowSize } from "ink";
 import { useTerminalInfo } from "ink-picture";
@@ -11,7 +12,7 @@ import type {
   MentionLabelLookup,
   ReplyTarget,
 } from "../types.js";
-import { getComposerRows, TERMINAL_GUTTER_ROWS } from "./layout.js";
+import { getComposerRows, getComposerInputWidth, TERMINAL_GUTTER_ROWS } from "./layout.js";
 import { Composer } from "./Composer.js";
 import {
   getMaxMessageScrollOffset,
@@ -66,7 +67,7 @@ export function ChatPage({
   const termHeight = rows || 24;
   const bodyRows = Math.max(
     termHeight -
-      getComposerRows(state.inlinePickerOpen) -
+      getComposerRows(state.inlinePickerOpen, getComposerInputLayout(state.composerParts, state.composerCursor, getComposerInputWidth(termWidth, Boolean(state.replyTarget))).height) -
       TERMINAL_GUTTER_ROWS,
     1
   );

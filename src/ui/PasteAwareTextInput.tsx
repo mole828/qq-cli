@@ -1,15 +1,20 @@
 import React from "react";
-import { Text, useInput, usePaste } from "ink";
+import { Box, Text, useInput, usePaste } from "ink";
 import {
   composerLength,
-  composerUnits,
   deleteComposerAt,
   deleteComposerBefore,
   insertComposerText,
   type ComposerPart,
 } from "../composer-draft.js";
 
+import { getComposerInputLayout } from "../composer-layout.js";
+import { textWidth } from "../terminal-text.js";
+import { isComposerNewline } from "../composer-key.js";
+
 interface PasteAwareTextInputProps {
+  width?: number;
+  maxRows?: number;
   parts: ComposerPart[];
   cursorOffset: number;
   onChange: (parts: ComposerPart[], cursorOffset: number) => void;
@@ -22,6 +27,8 @@ interface PasteAwareTextInputProps {
 }
 
 export function PasteAwareTextInput({
+  width = 72,
+  maxRows = 5,
   parts,
   cursorOffset,
   onChange,
@@ -43,6 +50,29 @@ export function PasteAwareTextInput({
 
   useInput(
     (input, key) => {
+      if (isComposerNewline(input, key)) {
+        const next = insertComposerText(parts, cursorOffset, "\n");
+        onChange(next.parts, next.cursor);
+        return;
+      }
+      if (key.escape || key.pageUp || key.pageDown) return;
+      if ((key.upArrow || key.downArrow) && !inlinePickerOpen && composerLength(parts) > 0) {
+        const layout = getComposerInputLayout(parts, cursorOffset, width, maxRows);
+        const row = layout.rows[layout.cursorRow];
+        const column = row.filter((unit) => unit.index < cursorOffset).reduce((sum, unit) => sum + textWidth(unit.label), 0);
+        const target = layout.rows[layout.cursorRow + (key.upArrow ? -1 : 1)];
+        if (target) {
+          let cells = 0;
+          let offset = target[0].index;
+          for (const unit of target) {
+            if (cells > column) break;
+            offset = unit.index;
+            cells += textWidth(unit.label);
+          }
+          onCursorChange(offset);
+        }
+        return;
+      }
       if (
         key.upArrow ||
         key.downArrow ||
@@ -100,42 +130,27 @@ export function PasteAwareTextInput({
         return;
       }
 
-      if (!input) return;
+      if (!input || key.ctrl || key.meta || key.super) return;
       const next = insertComposerText(parts, cursorOffset, input);
       onChange(next.parts, next.cursor);
     },
     { isActive: focus }
   );
 
-  const units = composerUnits(parts);
-  const safeCursor = Math.min(Math.max(cursorOffset, 0), units.length);
-
-  if (units.length === 0) {
-    return (
-      <Text>
-        {placeholder ? (
-          <>
-            <Text inverse>{placeholder[0]}</Text>
-            <Text color="gray">{placeholder.slice(1)}</Text>
-          </>
-        ) : (
-          <Text inverse> </Text>
-        )}
-      </Text>
-    );
+  const layout = getComposerInputLayout(parts, cursorOffset, width, maxRows);
+  const safeCursor = Math.min(Math.max(cursorOffset, 0), composerLength(parts));
+  if (composerLength(parts) === 0) {
+    return <Text wrap="truncate-end"><Text inverse>{placeholder[0] || " "}</Text><Text color="gray">{placeholder.slice(1)}</Text></Text>;
   }
-
   return (
-    <Text>
-      {units.slice(0, safeCursor).map((unit, index) => (
-        <Text key={`before-${index}`}>{unit.label}</Text>
+    <Box flexDirection="column" width={width}>
+      {layout.visibleRows.map((row, rowIndex) => (
+        <Text key={layout.startRow + rowIndex} wrap="truncate-end">
+          {row.map((unit) => (
+            <Text key={unit.index} inverse={unit.index === safeCursor}>{unit.label}</Text>
+          ))}
+        </Text>
       ))}
-      <Text inverse>{units[safeCursor]?.label ?? " "}</Text>
-      {units
-        .slice(safeCursor + (safeCursor < units.length ? 1 : 0))
-        .map((unit, index) => (
-          <Text key={`after-${index}`}>{unit.label}</Text>
-        ))}
-    </Text>
+    </Box>
   );
 }

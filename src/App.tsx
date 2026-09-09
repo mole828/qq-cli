@@ -1,3 +1,5 @@
+import { isComposerNewline } from "./composer-key.js";
+import { getComposerInputLayout } from "./composer-layout.js";
 import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { Box, useInput, useWindowSize, useApp } from "ink";
 import { useTerminalInfo } from "ink-picture";
@@ -62,7 +64,7 @@ import {
   getForwardPanelScrollOffset,
   getForwardTargets,
 } from "./ui/ForwardPanel.js";
-import { COMPOSER_ROWS, getComposerRows, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
+import { COMPOSER_ROWS, getComposerRows, getComposerInputWidth, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
 import { SessionPicker } from "./ui/SessionPicker.js";
 import { FacePanel, getFacePanelLayout } from "./ui/FacePanel.js";
 import {
@@ -342,8 +344,9 @@ export function App() {
   );
   const inlinePickerLoading = groupMembersLoading;
   const activeGroupId = activeSession?.type === "group" ? activeSession.id : null;
+  const inputRows = getComposerInputLayout(composerParts, composerCursor, getComposerInputWidth(termWidth, Boolean(replyTarget))).height;
   const bodyRows = Math.max(
-    termHeight - getComposerRows(inlinePickerOpen) - TERMINAL_GUTTER_ROWS,
+    termHeight - getComposerRows(inlinePickerOpen, inputRows) - TERMINAL_GUTTER_ROWS,
     1
   );
 
@@ -1128,6 +1131,7 @@ export function App() {
 
   // ---- key bindings ----
   useInput((input, key) => {
+    if (isComposerNewline(input, key)) return;
     if (key.ctrl && (input === "q" || input === "c")) {
       exit();
       return;
@@ -1384,6 +1388,9 @@ export function App() {
       }
       return;
     }
+
+    // Non-empty drafts own vertical cursor movement; PageUp/PageDown still scroll history.
+    if ((key.upArrow || key.downArrow) && composerLength(composerPartsRef.current) > 0) return;
 
     // ---- normal mode keys ----
     const sessionMessages = activeSession

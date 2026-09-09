@@ -211,8 +211,8 @@ function clipRow(
   if (cropTop <= 0 && visibleRows === undefined) return row;
 
   return (
-    <Box height={Math.max(visibleRows ?? 1, 1)} overflow="hidden">
-      <Box flexDirection="column" marginTop={-Math.max(cropTop, 0)}>
+    <Box height={Math.max(visibleRows ?? 1, 1)} flexDirection="column" overflow="hidden">
+      <Box flexDirection="column" flexShrink={0} marginTop={-Math.max(cropTop, 0)}>
         {row}
       </Box>
     </Box>
