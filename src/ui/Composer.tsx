@@ -1,6 +1,9 @@
+import { isCompleteCommand, type CompletionItem } from "../completion.js";
+import { CompletionPanel } from "./CompletionPanel.js";
 import React from "react";
 import { Box, Text } from "ink";
 import {
+  composerText,
   type ComposerPart,
 } from "../composer-draft.js";
 import { getComposerInputLayout } from "../composer-layout.js";
@@ -34,6 +37,8 @@ interface ComposerProps {
   mentionTotal: number;
   termWidth: number;
   imageMode: ImageMode;
+  completionItems?: CompletionItem[];
+  completionHighlight?: number;
   inlinePickerOpen?: boolean;
   inlinePickerQuery?: string;
   inlinePickerItems?: InlineInsertItem[];
@@ -60,6 +65,8 @@ export function Composer({
   mentionTotal,
   termWidth,
   imageMode,
+  completionItems = [],
+  completionHighlight = 0,
   inlinePickerOpen = false,
   inlinePickerQuery = "",
   inlinePickerItems = [],
@@ -104,7 +111,7 @@ export function Composer({
   const imageModeLabel = imageMode === "inline" ? "Images: inline" : "";
   const inputWidth = getComposerInputWidth(termWidth, Boolean(replyTarget));
   const inputLayout = getComposerInputLayout(parts, cursorOffset, inputWidth, 5);
-  const composerRows = getComposerRows(inlinePickerOpen, inputLayout.height);
+  const composerRows = getComposerRows(inlinePickerOpen || completionItems.length > 0, inputLayout.height);
   const replyLabel = replyTarget
     ? truncateCells(
         ` · ↳ #${replyTarget.messageId} ${replyTarget.senderName}: ${replyTarget.preview}`,
@@ -120,6 +127,9 @@ export function Composer({
       overflow="hidden"
       flexDirection="column"
     >
+      {completionItems.length > 0 && !inlinePickerOpen && (
+        <CompletionPanel items={completionItems} highlight={completionHighlight} width={composerWidth} enterExecutes={isCompleteCommand(composerText(parts))} />
+      )}
       {inlinePickerOpen && (
         <InlineInsertPanel
           items={inlinePickerItems}
@@ -169,7 +179,7 @@ export function Composer({
               onPaste={onPaste}
               focus={!helpMode && !facesMode && !forwardMode}
               placeholder={composerPlaceholder}
-              inlinePickerOpen={inlinePickerOpen}
+              inlinePickerOpen={inlinePickerOpen || completionItems.length > 0}
               width={inputWidth}
               maxRows={5}
             />

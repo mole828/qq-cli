@@ -1,3 +1,4 @@
+import type { CompletionItem } from "../completion.js";
 import { getComposerInputLayout } from "../composer-layout.js";
 import React from "react";
 import { Box, useWindowSize } from "ink";
@@ -34,6 +35,8 @@ export interface ChatPageState {
   replyTarget: ReplyTarget | null;
   unreadTotal: number;
   mentionTotal: number;
+  completionItems?: CompletionItem[];
+  completionHighlight?: number;
   inlinePickerOpen: boolean;
   inlinePickerQuery: string;
   inlinePickerItems: InlineInsertItem[];
@@ -67,7 +70,7 @@ export function ChatPage({
   const termHeight = rows || 24;
   const bodyRows = Math.max(
     termHeight -
-      getComposerRows(state.inlinePickerOpen, getComposerInputLayout(state.composerParts, state.composerCursor, getComposerInputWidth(termWidth, Boolean(state.replyTarget))).height) -
+      getComposerRows(state.inlinePickerOpen || Boolean(state.completionItems?.length), getComposerInputLayout(state.composerParts, state.composerCursor, getComposerInputWidth(termWidth, Boolean(state.replyTarget))).height) -
       TERMINAL_GUTTER_ROWS,
     1
   );
@@ -129,6 +132,8 @@ export function ChatPage({
         cursorOffset={state.composerCursor}
         onCursorChange={onCursorChange}
         imageMode={state.imageMode}
+        completionItems={state.completionItems}
+        completionHighlight={state.completionHighlight}
         inlinePickerOpen={state.inlinePickerOpen}
         inlinePickerQuery={state.inlinePickerQuery}
         inlinePickerItems={state.inlinePickerItems}

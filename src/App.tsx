@@ -1,3 +1,4 @@
+import { getCommandCompletions, isCompleteCommand, type CompletionItem } from "./completion.js";
 import { isComposerNewline } from "./composer-key.js";
 import { getComposerInputLayout } from "./composer-layout.js";
 import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
@@ -89,7 +90,6 @@ import {
   getAudioPathCompletionInput,
   parseCommandArgs,
   readAudioFile,
-  type AudioPathCompletionMatch,
 } from "./audio.js";
 
 function clamp(v: number, lo: number, hi: number) {
@@ -171,35 +171,6 @@ function getFirstForwardId(segments: MessageSegment[] | undefined) {
   return null;
 }
 
-const COMPLETABLE_COMMANDS = [
-  "/session",
-  "/contacts",
-  "/groups",
-  "/friends",
-  "/audio",
-  "/record",
-  "/images",
-  "/mention",
-  "/faces",
-  "/stickers",
-  "/echo",
-  "/forward",
-  "/reply",
-  "/reload",
-  "/help",
-  "/exit",
-  "/quit",
-] as const;
-
-type CompletionState =
-  | { kind: "standard"; prefix: string; index: number }
-  | {
-      kind: "audio-path";
-      prefix: string;
-      index: number;
-      matches: AudioPathCompletionMatch[];
-    };
-
 type FaceLoadPhase = "idle" | "clearing" | "requesting" | "caching";
 
 const RECENT_CONTACT_LIMIT = 100;
@@ -237,7 +208,9 @@ export function App() {
   const cmuxPreviewRef = useRef<CmuxPreview | null>(null);
   const composerPartsRef = useRef<ComposerPart[]>(emptyComposerParts());
   const composerCursorRef = useRef(0);
-  const completionRef = useRef<CompletionState | null>(null);
+  const [completionDismissed, setCompletionDismissed] = useState<string | null>(null);
+  const [completionSelection, setCompletionSelection] = useState({ input: "", index: 0 });
+  const [audioCompletions, setAudioCompletions] = useState<{ input: string; items: CompletionItem[] }>({ input: "", items: [] });
   const faceRequestRef = useRef(0);
   const customFaceProviderRef = useRef(new CustomFaceProvider());
   const customFaceCacheRef = useRef(new CustomFaceCache());
@@ -344,9 +317,45 @@ export function App() {
   );
   const inlinePickerLoading = groupMembersLoading;
   const activeGroupId = activeSession?.type === "group" ? activeSession.id : null;
+  const completionEnabled = !hasComposerMedia && !inlinePickerOpen && !helpMode &&
+    !modalMode && !facesMode && !forwardView && composerCursor === composerLength(composerParts);
+  const audioCompletionInput = getAudioPathCompletionInput(inputText);
+  const completionItems = useMemo(() => {
+    if (!completionEnabled) return [];
+    if (audioCompletionInput) return audioCompletions.input === inputText ? audioCompletions.items : [];
+    return getCommandCompletions(inputText, contacts, messages, activeSession);
+  }, [completionEnabled, inputText, audioCompletions, contacts, messages, activeSession]);
+  const completionOpen = completionEnabled && completionDismissed !== inputText && completionItems.length > 0;
+  const completionHighlight = completionSelection.input === inputText
+    ? Math.min(completionSelection.index, Math.max(completionItems.length - 1, 0)) : 0;
+
+  useEffect(() => {
+    if (!completionEnabled || completionDismissed === inputText) return;
+    const input = getAudioPathCompletionInput(inputText);
+    if (!input) return;
+    let cancelled = false;
+    void findAudioPathCompletions(input).then((matches) => {
+      if (!cancelled) setAudioCompletions({ input: inputText, items: matches.map((match) => ({
+        value: formatAudioPathCompletion(input, match), label: match.value.replace(/\/$/, "").split("/").pop() + (match.isDirectory ? "/" : ""),
+      })) });
+    }).catch(() => {
+      if (!cancelled) setAudioCompletions({ input: inputText, items: [] });
+    });
+    return () => { cancelled = true; };
+  }, [inputText, completionEnabled, completionDismissed]);
+
+  function acceptCompletion() {
+    const item = completionItems[completionHighlight];
+    if (!item) return;
+    setInputText(item.value);
+    // Commands with arguments and directories continue into their next candidates.
+    setCompletionDismissed(item.value.endsWith(" ") || getAudioPathCompletionInput(item.value)?.pathToken.endsWith("/") ? null : item.value);
+    setCompletionSelection({ input: item.value, index: 0 });
+  }
+
   const inputRows = getComposerInputLayout(composerParts, composerCursor, getComposerInputWidth(termWidth, Boolean(replyTarget))).height;
   const bodyRows = Math.max(
-    termHeight - getComposerRows(inlinePickerOpen, inputRows) - TERMINAL_GUTTER_ROWS,
+    termHeight - getComposerRows(inlinePickerOpen || completionOpen, inputRows) - TERMINAL_GUTTER_ROWS,
     1
   );
 
@@ -365,6 +374,7 @@ export function App() {
   }
 
   function setInputText(value: string) {
+    setCompletionDismissed(null);
     setInlinePickerDismissed(null);
     updateComposerDraft(
       value ? [{ type: "text", text: value }] : emptyComposerParts(),
@@ -1032,7 +1042,7 @@ export function App() {
   }
 
   function handleInputChange(nextParts: ComposerPart[], nextCursor: number) {
-    completionRef.current = null;
+    setCompletionDismissed(null);
     setInlinePickerDismissed(null);
     handleComposerChange(nextParts, nextCursor);
   }
@@ -1108,27 +1118,6 @@ export function App() {
     }
   }
 
-  async function completeAudioPath(input: string) {
-    const completionInput = getAudioPathCompletionInput(input);
-    if (!completionInput) return;
-
-    const matches = await findAudioPathCompletions(completionInput);
-    // A user may have continued typing while the directory was being read.
-    if (composerText(composerPartsRef.current) !== input) return;
-    if (matches.length === 0) {
-      setStatusMsg("No matching audio path");
-      return;
-    }
-
-    setInputText(formatAudioPathCompletion(completionInput, matches[0]));
-    completionRef.current = {
-      kind: "audio-path",
-      prefix: input,
-      index: 0,
-      matches,
-    };
-  }
-
   // ---- key bindings ----
   useInput((input, key) => {
     if (isComposerNewline(input, key)) return;
@@ -1152,6 +1141,8 @@ export function App() {
         closeFaces();
       } else if (modalMode) {
         closeModal();
+      } else if (completionOpen) {
+        setCompletionDismissed(inputText);
       } else if (inlinePickerOpen && inlineTriggerSignature) {
         setInlinePickerDismissed(inlineTriggerSignature);
       } else {
@@ -1389,6 +1380,22 @@ export function App() {
       return;
     }
 
+    if (completionOpen) {
+      if (key.return && isCompleteCommand(inputText)) {
+        handleSubmit();
+        return;
+      }
+      if (key.return || (key.tab && !key.shift)) {
+        acceptCompletion();
+        return;
+      }
+      if (key.upArrow || key.downArrow) {
+        setCompletionSelection({ input: inputText, index:
+          (completionHighlight + (key.upArrow ? -1 : 1) + completionItems.length) % completionItems.length });
+        return;
+      }
+    }
+
     // Non-empty drafts own vertical cursor movement; PageUp/PageDown still scroll history.
     if ((key.upArrow || key.downArrow) && composerLength(composerPartsRef.current) > 0) return;
 
@@ -1462,64 +1469,9 @@ export function App() {
       return;
     }
 
-    if (key.tab) {
-      const activeCompletion = completionRef.current;
-
-      if (!hasComposerMedia && activeCompletion?.kind === "audio-path") {
-        const completionInput = getAudioPathCompletionInput(activeCompletion.prefix);
-        if (!completionInput || activeCompletion.matches.length === 0) {
-          completionRef.current = null;
-          return;
-        }
-        const index = (activeCompletion.index + 1) % activeCompletion.matches.length;
-        setInputText(
-          formatAudioPathCompletion(completionInput, activeCompletion.matches[index])
-        );
-        completionRef.current = { ...activeCompletion, index };
-        return;
-      }
-
-      if (!hasComposerMedia && getAudioPathCompletionInput(inputText)) {
-        void completeAudioPath(inputText);
-        return;
-      }
-
-      const messageCommandMatch = !hasComposerMedia
-        ? inputText.match(/^\/(forward|reply)\s+(\S*)$/i)
-        : null;
-      const prefix = activeCompletion?.prefix ?? (
-        messageCommandMatch
-          ? `/${messageCommandMatch[1].toLowerCase()} ${messageCommandMatch[2]}`
-          : inputText.toLowerCase()
-      );
-      const messageCommand = prefix.match(/^\/(forward|reply)\s/i)?.[1].toLowerCase();
-      const messageIdPrefix = messageCommand
-        ? prefix.slice(messageCommand.length + 2)
-        : "";
-      const matches = messageCommand && activeSession
-        ? [...new Set(
-            messagesRef.current
-              .filter((message) => {
-                if (!belongsToSession(message, activeSession)) return false;
-                if (messageCommand === "forward") {
-                  return Boolean(getFirstForwardId(message.segments));
-                }
-                return !message.isMine;
-              })
-              .filter((message) => String(message.id).startsWith(messageIdPrefix))
-              .sort((a, b) => b.timestamp - a.timestamp)
-              .map((message) => `/${messageCommand} ${message.id}`)
-          )]
-        : !hasComposerMedia && !inputText.includes(" ") && inputText.startsWith("/")
-        ? COMPLETABLE_COMMANDS.filter((command) => command.startsWith(prefix))
-        : [];
-      if (matches.length === 0) return;
-
-      const index = activeCompletion
-        ? (activeCompletion.index + 1) % matches.length
-        : 0;
-      setInputText(matches[index]);
-      completionRef.current = { kind: "standard", prefix, index };
+    if (key.tab && completionEnabled) {
+      setCompletionDismissed(null);
+      setCompletionSelection({ input: inputText, index: 0 });
       return;
     }
 
@@ -1667,7 +1619,7 @@ export function App() {
 
   // ---- commands ----
   function handleCommand(cmd: string) {
-    completionRef.current = null;
+    setCompletionDismissed(null);
     const parts = parseCommandArgs(cmd);
     if (!parts) {
       setInputText("");
@@ -1686,6 +1638,12 @@ export function App() {
           return;
         }
         const q = args.toLowerCase();
+        const exactSession = contacts.find((contact) => sessionKey(contact) === q);
+        if (exactSession) {
+          handleSession(exactSession);
+          setInputText("");
+          break;
+        }
         const matched = contacts.filter(
           (c) =>
             c.name.toLowerCase().includes(q) ||
@@ -1967,6 +1925,8 @@ export function App() {
           replyTarget,
           unreadTotal,
           mentionTotal,
+          completionItems: completionOpen ? completionItems : [],
+          completionHighlight,
           inlinePickerOpen,
           inlinePickerQuery: inlineTrigger?.query || "",
           inlinePickerItems,
@@ -2085,6 +2045,8 @@ export function App() {
         mentionTotal={mentionTotal}
         termWidth={termWidth}
         imageMode={imageMode}
+        completionItems={completionOpen ? completionItems : []}
+        completionHighlight={completionHighlight}
         inlinePickerOpen={inlinePickerOpen}
         inlinePickerQuery={inlineTrigger?.query || ""}
         inlinePickerItems={inlinePickerItems}
