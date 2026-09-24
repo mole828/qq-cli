@@ -21,6 +21,7 @@ interface ForwardPanelProps {
   forwardId: string;
   nodes: ForwardNode[] | null;
   loading: boolean;
+  // Rows from the beginning of the record.
   scrollOffset: number;
   selectedNodeIndex: number | null;
   depth: number;
@@ -108,6 +109,9 @@ export function ForwardPanel({
 }: ForwardPanelProps) {
   const messageRows = Math.max(bodyRows - FORWARD_HEADER_ROWS, 1);
   const messages = forwardNodesToMessages(forwardId, nodes);
+  const maxOffset = getForwardPanelMaxOffset(
+    forwardId, nodes, bodyRows, termWidth, cellWidth, cellHeight, imageMode, mentionLabels
+  );
   const selectedMessageId = selectedNodeIndex === null
     ? null
     : `${forwardId}:${selectedNodeIndex}`;
@@ -120,7 +124,7 @@ export function ForwardPanel({
       </Box>
       <Box height={1} overflow="hidden" paddingX={2}>
         <Text dimColor>
-          Esc {depth > 1 ? "back" : "close"} · Tab nested · Enter open · ↑/↓ scroll · Shift+Tab images
+          Esc {depth > 1 ? "back" : "close"} · Tab nested · Enter open · ↑/↓ scroll · Home/End · Shift+Tab images
         </Text>
       </Box>
       <Box height={1} />
@@ -142,7 +146,7 @@ export function ForwardPanel({
             bodyRows={messageRows}
             imageMode={imageMode}
             mentionLabels={mentionLabels}
-            scrollOffset={scrollOffset}
+            scrollOffset={Math.max(maxOffset - Math.max(scrollOffset, 0), 0)}
             messageGap={FORWARD_MESSAGE_GAP}
             selectedMessageId={selectedMessageId}
             forwardSegmentId
@@ -190,7 +194,12 @@ export function getForwardPanelScrollOffset(
   currentOffset: number,
   mentionLabels?: MentionLabelLookup
 ) {
-  return getMessageScrollOffsetForIndex(
+  const maxOffset = getForwardPanelMaxOffset(
+    forwardId, nodes, bodyRows, termWidth, cellWidth, cellHeight, imageMode, mentionLabels
+  );
+  if (!nodes || nodeIndex < 0 || nodeIndex >= nodes.length) return 0;
+  // MessageList measures from the bottom; forward navigation measures from the top.
+  return maxOffset - getMessageScrollOffsetForIndex(
     forwardNodesToMessages(forwardId, nodes),
     Math.max(bodyRows - FORWARD_HEADER_ROWS, 1),
     FORWARD_SELF_ID,
@@ -199,7 +208,7 @@ export function getForwardPanelScrollOffset(
     cellHeight,
     imageMode,
     FORWARD_MESSAGE_GAP,
-    currentOffset,
+    Math.max(maxOffset - Math.max(currentOffset, 0), 0),
     nodeIndex,
     true,
     mentionLabels

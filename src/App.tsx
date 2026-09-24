@@ -1236,19 +1236,21 @@ export function App() {
         mentionLabels
       );
       if (key.upArrow) {
-        setForwardScrollOffset((offset) => Math.min(offset + 1, maxOffset));
+        setForwardScrollOffset((offset) => Math.max(Math.min(offset, maxOffset) - 1, 0));
       } else if (key.downArrow) {
-        setForwardScrollOffset((offset) => Math.max(offset - 1, 0));
+        setForwardScrollOffset((offset) => Math.min(offset + 1, maxOffset));
       } else if (key.pageUp) {
         setForwardScrollOffset((offset) =>
-          Math.min(offset + Math.max(Math.floor(bodyRows / 2), 1), maxOffset)
+          Math.max(Math.min(offset, maxOffset) - Math.max(Math.floor(bodyRows / 2), 1), 0)
         );
       } else if (key.pageDown) {
         setForwardScrollOffset((offset) =>
-          Math.max(offset - Math.max(Math.floor(bodyRows / 2), 1), 0)
+          Math.min(offset + Math.max(Math.floor(bodyRows / 2), 1), maxOffset)
         );
-      } else if (key.end) {
+      } else if (key.home) {
         setForwardScrollOffset(0);
+      } else if (key.end) {
+        setForwardScrollOffset(maxOffset);
       }
       return;
     }
