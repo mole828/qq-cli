@@ -1879,6 +1879,7 @@ export function App() {
       if (messageId === null) throw new Error("OneBot rejected the message");
       setInputText("");
       setReplyTarget(null);
+      setStatusMsg("");
       rememberSentMessage(activeSession, messageId, text, segments);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
