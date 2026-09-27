@@ -230,12 +230,14 @@ export class QQClient {
     this.ws = ws;
 
     ws.on("open", () => {
+      if (this.ws !== ws) return;
       const displayUrl = this.wsUrl.replace(/(access_token=)[^&]+/, "$1***");
       logger.info("WebSocket connected", { url: displayUrl });
       this.updateStatus(true);
     });
 
     ws.on("message", (data: Buffer) => {
+      if (this.ws !== ws) return;
       try {
         const raw = data.toString();
         logger.debug("WS recv", { raw: raw.slice(0, 500) });
@@ -247,7 +249,8 @@ export class QQClient {
     });
 
     ws.on("close", (code) => {
-      if (this.ws === ws) this.ws = null;
+      if (this.ws !== ws) return;
+      this.ws = null;
       const displayUrl = this.wsUrl.replace(/(access_token=)[^&]+/, "$1***");
       logger.warn("WebSocket disconnected", { code, url: displayUrl });
       this.updateStatus(false);
@@ -257,6 +260,7 @@ export class QQClient {
     });
 
     ws.on("error", (err) => {
+      if (this.ws !== ws) return;
       const displayUrl = this.wsUrl.replace(/(access_token=)[^&]+/, "$1***");
       logger.error("WebSocket error", { error: err.message, url: displayUrl });
       this.updateStatus(false);
@@ -765,7 +769,15 @@ export class QQClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.ws?.close();
+    this.onMessageCallback = null;
+    this.onContactsCallback = null;
+    this.onStatusCallback = null;
+    this.onSenderNamesChangedCallback = null;
+    // A suspended socket may never complete a close handshake.
+    this.ws?.terminate();
     this.ws = null;
+    for (const [echo, settle] of this.pendingRequests) {
+      settle({ status: "failed", retcode: -1, data: null, echo });
+    }
   }
 }

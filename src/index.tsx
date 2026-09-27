@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { render, useWindowSize } from "ink";
 import {
   InkPictureProvider,
@@ -8,6 +8,17 @@ import { App } from "./App.js";
 import { getInitialImageMode, parseImageMode, parseMessageGap } from "./config.js";
 import { HistoryApp } from "./HistoryApp.js";
 import { readChatHistory } from "./history-file.js";
+import { watchForResume } from "./resume.js";
+import { logger } from "./logger.js";
+
+function RestartOnResume({ children }: { children: React.ReactNode }) {
+  const [generation, setGeneration] = useState(0);
+  useEffect(() => watchForResume((gapMs) => {
+    logger.info("Restarting application after suspension", { gapMs });
+    setGeneration((current) => current + 1);
+  }), []);
+  return <React.Fragment key={generation}>{children}</React.Fragment>;
+}
 
 interface TerminalInfoSample {
   info: TerminalInfo;
@@ -73,16 +84,18 @@ const messageGap = parseMessageGap(
 const history = historyPath ? await readChatHistory(historyPath) : null;
 
 render(
-  <ResponsivePictureProvider>
-    {history ? (
-      <HistoryApp
-        history={history}
-        initialOffset={initialOffset}
-        initialImageMode={imageMode}
-        messageGap={messageGap}
-      />
-    ) : (
-      <App />
-    )}
-  </ResponsivePictureProvider>
+  <RestartOnResume>
+    <ResponsivePictureProvider>
+      {history ? (
+        <HistoryApp
+          history={history}
+          initialOffset={initialOffset}
+          initialImageMode={imageMode}
+          messageGap={messageGap}
+        />
+      ) : (
+        <App />
+      )}
+    </ResponsivePictureProvider>
+  </RestartOnResume>
 );
