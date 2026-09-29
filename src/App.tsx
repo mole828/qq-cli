@@ -26,6 +26,7 @@ import type {
   StickerItem,
 } from "./types.js";
 import { QQClient } from "./qq-client.js";
+import { retainSessionMessages } from "./message-retention.js";
 import {
   CmuxPreview,
   getInitialCmuxMentionMode,
@@ -446,6 +447,21 @@ export function App() {
     );
   }
 
+  function storeMessages(next: ChatMessage[]) {
+    const retained = retainSessionMessages(next);
+    messagesRef.current = retained.messages;
+    setMessages(retained.messages);
+    let mentionsChanged = false;
+    for (const message of retained.removed) {
+      if (pendingMentionMessagesRef.current.delete(messageKey(message))) {
+        mentionsChanged = true;
+      }
+    }
+    if (mentionsChanged) {
+      refreshMentionCounts(mentionModeRef.current, qqRef.current?.getSelfId() || 0);
+    }
+  }
+
   useEffect(() => {
     messageScrollOffsetRef.current = messageScrollOffset;
   }, [messageScrollOffset]);
@@ -578,8 +594,7 @@ export function App() {
     client.onMessage((msg) => {
       const key = messageKey(msg);
       if (messagesRef.current.some((item) => messageKey(item) === key)) return;
-      messagesRef.current = [...messagesRef.current, msg];
-      setMessages(messagesRef.current);
+      storeMessages([...messagesRef.current, msg]);
       const current = activeSessionRef.current;
       const messageContact = contactForMessage(msg);
       const messageSessionKey = sessionKey(messageContact);
@@ -1520,10 +1535,9 @@ export function App() {
       for (const message of [...history, ...messagesRef.current]) {
         merged.set(messageKey(message), message);
       }
-      messagesRef.current = [...merged.values()].sort(
+      storeMessages([...merged.values()].sort(
         (a, b) => a.timestamp - b.timestamp
-      );
-      setMessages(messagesRef.current);
+      ));
     }
 
     const active = activeSessionRef.current;
@@ -1568,8 +1582,7 @@ export function App() {
     };
     const key = messageKey(sent);
     if (!messagesRef.current.some((item) => messageKey(item) === key)) {
-      messagesRef.current = [...messagesRef.current, sent];
-      setMessages(messagesRef.current);
+      storeMessages([...messagesRef.current, sent]);
     }
     updateCmuxPreview(contact, sent);
     if (activeSessionRef.current && sessionKey(activeSessionRef.current) === sessionKey(contact)) {
