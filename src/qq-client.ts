@@ -396,7 +396,11 @@ export class QQClient {
     };
   }
 
-  async getChatHistory(contact: Contact, count = 20): Promise<ChatMessage[] | null> {
+  async getChatHistory(
+    contact: Contact,
+    count = 20,
+    beforeMessageId?: number | string
+  ): Promise<ChatMessage[] | null> {
     const isGroup = contact.type === "group";
     const action = isGroup
       ? "get_group_msg_history"
@@ -405,9 +409,14 @@ export class QQClient {
       [isGroup ? "group_id" : "user_id"]: String(contact.id),
       count,
     };
-    if (!isGroup) {
+    // NapCat accepts the returned message_id as its history cursor, despite
+    // naming the parameter message_seq. Anchored queries need reverseOrder=true
+    // to fetch older messages; the response can include the anchor itself.
+    params.reverseOrder = beforeMessageId !== undefined;
+    if (beforeMessageId !== undefined) {
+      params.message_seq = String(beforeMessageId);
+    } else if (!isGroup) {
       params.message_seq = "0";
-      params.reverseOrder = false;
     }
 
     const res = await this.callApi(action, params);

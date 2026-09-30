@@ -211,7 +211,7 @@ NapCat 的配置、插件和 QQ 登录数据会分别保存在：
 | `Esc`（候选展开时） | 关闭候选，保留输入；Tab 可重新打开 |
 | `Shift+Tab` | 切换内联图片显示状态 |
 | `↑` / `↓` | 在草稿中上下移动光标；输入为空时滚动历史；面板中移动选择 |
-| `PageUp` / `PageDown` | 在会话面板中翻页 |
+| `PageUp` / `PageDown` | 在会话面板中翻页；`PageUp` 到顶部时继续加载更早的消息 |
 | `Cmd+←` / `Cmd+→` 或 `Ctrl+A` / `Ctrl+E` | 跳到输入栏的行首或行尾 |
 | `Ctrl+F` | 在当前光标位置打开自定义表情面板；Enter 插入，Esc 返回 |
 | `@` | 在群聊当前光标位置打开群成员候选；Enter / Tab 插入，Esc 关闭 |
@@ -295,7 +295,7 @@ qq-cli 会尽量把常见 CQ 段压缩成短标签，例如 `[image]`、`[reply]
 - 目前主要支持文本发送；语音通过 `/audio` 或 `/record` 作为独立消息发送
 - `QQ_CLI_IMAGE_MODE=inline` 或 `/images inline` 会尝试显示缩略图，效果取决于终端对 Kitty、iTerm2 inline image、Sixel 或字符 fallback 的支持
 - 语音、视频等消息以摘要形式显示，不做媒体预览
-- 历史消息不持久化，重启后只显示本次运行期间收到的消息
+- 历史消息不持久化；首次打开会话请求最近 20 条，`PageUp` 到顶部时再分批请求更早记录。历史分页依赖 NapCat 的 `get_group_msg_history` / `get_friend_msg_history` 扩展接口，不属于 OneBot v11 标准；可回溯范围取决于服务端保存的记录
 - 会话列表来自 OneBot 好友列表和群列表，不包含更复杂的最近会话同步
 
 ### GIF 预览

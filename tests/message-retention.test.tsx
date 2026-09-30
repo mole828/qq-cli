@@ -31,6 +31,18 @@ test("default limit is enforced independently for multiple busy groups", () => {
   assert.equal(result.messages[0]!.id, 20);
 });
 
+test("a session being actively paged keeps older pages while other sessions stay capped", () => {
+  const input = Array.from({ length: MAX_MESSAGES_PER_SESSION + 20 }, (_, i) =>
+    [message(i, 1), message(i, 2)]).flat();
+  const result = retainSessionMessages(input, MAX_MESSAGES_PER_SESSION, new Set(["group:1"]));
+
+  assert.equal(result.messages.filter((m) => m.contactId === 1).length, MAX_MESSAGES_PER_SESSION + 20);
+  assert.equal(result.messages.filter((m) => m.contactId === 2).length, MAX_MESSAGES_PER_SESSION);
+  assert.equal(result.messages.find((m) => m.contactId === 1)?.id, 0);
+  assert.equal(result.messages.find((m) => m.contactId === 2)?.id, 20);
+  assert.equal(result.removed.length, 20);
+});
+
 test("sessions below the limit keep their existing array and message references", () => {
   const input = [message(1), message(2, 2)];
   const result = retainSessionMessages(input, 1);

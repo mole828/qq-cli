@@ -28,6 +28,13 @@ import type {
 import { QQClient } from "./qq-client.js";
 import { retainSessionMessages } from "./message-retention.js";
 import {
+  earliestHistoryMessage,
+  HISTORY_PAGE_SIZE,
+  HistoryPagination,
+  mergeHistoryMessages,
+  shouldAdvanceHistoryViewport,
+} from "./history-pagination.js";
+import {
   CmuxPreview,
   getInitialCmuxMentionMode,
   parseCmuxMentionMode,
@@ -99,6 +106,10 @@ function clamp(v: number, lo: number, hi: number) {
 
 function sessionKey(contact: Contact) {
   return `${contact.type}:${contact.id}`;
+}
+
+function retentionSessionKey(contact: Contact) {
+  return `${contact.type === "group" ? "group" : "private"}:${contact.id}`;
 }
 
 function messageSessionKey(message: ChatMessage) {
@@ -202,9 +213,10 @@ export function App() {
   const loadedRef = useRef(false);
   const activeSessionRef = useRef<Contact | null>(null);
   const contactsRef = useRef<Contact[]>([]);
-  const historyRequestedRef = useRef(new Set<string>());
+  const historyPaginationRef = useRef(new HistoryPagination());
+  const unboundedHistorySessionsRef = useRef(new Set<string>());
   const messagesRef = useRef<ChatMessage[]>([]);
-  const sessionGenerationRef = useRef(0);
+  const scrollInteractionRef = useRef(0);
   const messageScrollOffsetRef = useRef(0);
   const cmuxPreviewRef = useRef<CmuxPreview | null>(null);
   const composerPartsRef = useRef<ComposerPart[]>(emptyComposerParts());
@@ -448,7 +460,11 @@ export function App() {
   }
 
   function storeMessages(next: ChatMessage[]) {
-    const retained = retainSessionMessages(next);
+    const retained = retainSessionMessages(
+      next,
+      undefined,
+      unboundedHistorySessionsRef.current
+    );
     messagesRef.current = retained.messages;
     setMessages(retained.messages);
     let mentionsChanged = false;
@@ -460,6 +476,11 @@ export function App() {
     if (mentionsChanged) {
       refreshMentionCounts(mentionModeRef.current, qqRef.current?.getSelfId() || 0);
     }
+  }
+
+  function setMessageScrollOffsetValue(offset: number) {
+    messageScrollOffsetRef.current = offset;
+    setMessageScrollOffset(offset);
   }
 
   useEffect(() => {
@@ -620,9 +641,8 @@ export function App() {
         updateCmuxPreview(current, msg);
         if (messageScrollOffsetRef.current > 0) {
           const viewport = messageViewportRef.current;
-          setMessageScrollOffset(
-            (offset) =>
-              offset +
+          setMessageScrollOffsetValue(
+            messageScrollOffsetRef.current +
               getMessageScrollRows(
                 msg,
                 viewport.bodyRows,
@@ -1433,33 +1453,60 @@ export function App() {
         false,
         mentionLabels
       );
-      setMessageScrollOffset((offset) => Math.min(offset + 1, maxOffset));
-      return;
-    }
-    if (key.downArrow && activeSession) {
-      setMessageScrollOffset((offset) => Math.max(offset - 1, 0));
-      return;
-    }
-    if (key.pageUp && activeSession) {
-      setMessageScrollOffset((offset) =>
-        moveMessageScrollOffset(
-          sessionMessages,
-          bodyRows,
-          selfId,
-          termWidth,
-          terminalInfo.cellWidth,
-          terminalInfo.cellHeight,
-          imageMode,
-          messageGap,
-          offset,
-          "older",
-          mentionLabels
-        )
+      scrollInteractionRef.current += 1;
+      setMessageScrollOffsetValue(
+        Math.min(messageScrollOffsetRef.current + 1, maxOffset)
       );
       return;
     }
+    if (key.downArrow && activeSession) {
+      scrollInteractionRef.current += 1;
+      setMessageScrollOffsetValue(Math.max(messageScrollOffsetRef.current - 1, 0));
+      return;
+    }
+    if (key.pageUp && activeSession) {
+      const maxOffset = getMaxMessageScrollOffset(
+        sessionMessages,
+        bodyRows,
+        selfId,
+        termWidth,
+        terminalInfo.cellWidth,
+        terminalInfo.cellHeight,
+        imageMode,
+        messageGap,
+        false,
+        mentionLabels
+      );
+      const nextOffset = moveMessageScrollOffset(
+        sessionMessages,
+        bodyRows,
+        selfId,
+        termWidth,
+        terminalInfo.cellWidth,
+        terminalInfo.cellHeight,
+        imageMode,
+        messageGap,
+        messageScrollOffsetRef.current,
+        "older",
+        mentionLabels
+      );
+      scrollInteractionRef.current += 1;
+      setMessageScrollOffsetValue(nextOffset);
+      if (nextOffset >= maxOffset) {
+        const pagination = historyPaginationRef.current.snapshot(sessionKey(activeSession));
+        if (!pagination.initialLoaded) {
+          if (!pagination.loading) void loadHistory(activeSession);
+        } else if (pagination.hasMore) {
+          void loadOlderHistory(activeSession);
+        } else if (!pagination.loading) {
+          setStatusMsg(`No earlier history · ${activeSession.name}`);
+        }
+      }
+      return;
+    }
     if (key.pageDown && activeSession) {
-      setMessageScrollOffset((offset) =>
+      scrollInteractionRef.current += 1;
+      setMessageScrollOffsetValue(
         moveMessageScrollOffset(
           sessionMessages,
           bodyRows,
@@ -1469,7 +1516,7 @@ export function App() {
           terminalInfo.cellHeight,
           imageMode,
           messageGap,
-          offset,
+          messageScrollOffsetRef.current,
           "newer",
           mentionLabels
         )
@@ -1477,7 +1524,8 @@ export function App() {
       return;
     }
     if (key.end && activeSession) {
-      setMessageScrollOffset(0);
+      scrollInteractionRef.current += 1;
+      setMessageScrollOffsetValue(0);
       return;
     }
 
@@ -1497,12 +1545,16 @@ export function App() {
   function handleSession(contact: Contact) {
     if (contacts.some((item) => sessionKey(item) === sessionKey(contact))) {
       const key = sessionKey(contact);
-      const generation = sessionGenerationRef.current + 1;
-      sessionGenerationRef.current = generation;
-      messageScrollOffsetRef.current = 0;
+      const previous = activeSessionRef.current;
+      if (previous && sessionKey(previous) !== key) {
+        historyPaginationRef.current.reset(sessionKey(previous));
+        unboundedHistorySessionsRef.current.delete(retentionSessionKey(previous));
+        storeMessages(messagesRef.current);
+      }
+      scrollInteractionRef.current += 1;
+      setMessageScrollOffsetValue(0);
       setReplyTarget(null);
       setInputText("");
-      setMessageScrollOffset(0);
       activeSessionRef.current = contact;
       setActiveSession(contact);
       updateCmuxPreview(contact);
@@ -1516,49 +1568,147 @@ export function App() {
         mentionModeRef.current,
         qqRef.current?.getSelfId() || selfId
       );
-      void loadHistory(contact, generation);
+      void loadHistory(contact);
     }
   }
 
-  async function loadHistory(contact: Contact, generation: number) {
+  async function loadHistory(contact: Contact) {
     const key = sessionKey(contact);
-    const shouldRequestHistory = !historyRequestedRef.current.has(key);
-    if (shouldRequestHistory) historyRequestedRef.current.add(key);
-    setStatusMsg(`Loading history · ${contact.name}`);
+    const pagination = historyPaginationRef.current;
+    const request = pagination.beginInitial(key);
+    if (!request) return;
 
     const client = qqRef.current;
-    const history = shouldRequestHistory && client
-      ? await client.getChatHistory(contact, 20)
-      : [];
-    if (history) {
-      const merged = new Map<string, ChatMessage>();
-      for (const message of [...history, ...messagesRef.current]) {
-        merged.set(messageKey(message), message);
-      }
-      storeMessages([...merged.values()].sort(
-        (a, b) => a.timestamp - b.timestamp
-      ));
+    setStatusMsg(`Loading history · ${contact.name}`);
+    let history: ChatMessage[] | null = null;
+    try {
+      if (client) history = await client.getChatHistory(contact, HISTORY_PAGE_SIZE);
+    } catch {
+      history = null;
     }
 
     const active = activeSessionRef.current;
-    if (
-      generation !== sessionGenerationRef.current ||
-      active?.id !== contact.id ||
-      active.type !== contact.type
-    ) return;
+    if (!pagination.isCurrent(request)) return;
+    if (!active || sessionKey(active) !== key) {
+      pagination.complete(request, null);
+      return;
+    }
+
+    let addedCount = 0;
+    if (history !== null) {
+      const { messages: merged, added } = mergeHistoryMessages(
+        messagesRef.current,
+        history.filter((message) => belongsToSession(message, contact))
+      );
+      addedCount = added.length;
+      storeMessages(merged);
+    }
+
+    const completion = pagination.complete(
+      request,
+      history === null ? null : history.length,
+      addedCount
+    );
+    if (!completion) return;
 
     const sessionMessages = messagesRef.current
       .filter((message) => belongsToSession(message, contact))
       .sort((a, b) => a.timestamp - b.timestamp);
     updateCmuxPreview(contact, sessionMessages.at(-1) || null);
-    const loadedCount = shouldRequestHistory
-      ? history?.length || 0
-      : sessionMessages.length;
     setStatusMsg(
-      history === null
+      completion.failed
         ? `History unavailable · ${contact.name}`
-        : `${loadedCount} history entries · ${contact.name}`
+        : `${history?.length || 0} history entries · ${contact.name}`
     );
+  }
+
+  async function loadOlderHistory(contact: Contact) {
+    const key = sessionKey(contact);
+    const sessionMessages = messagesRef.current
+      .filter((message) => belongsToSession(message, contact))
+      .sort((a, b) => a.timestamp - b.timestamp);
+    const cursor = earliestHistoryMessage(sessionMessages);
+    const pagination = historyPaginationRef.current;
+    const request = pagination.beginOlder(key, cursor?.id);
+    if (!request) return;
+
+    const scrollVersion = scrollInteractionRef.current;
+    const client = qqRef.current;
+    setStatusMsg(`Loading earlier history · ${contact.name}`);
+    let page: ChatMessage[] | null = null;
+    try {
+      if (client) {
+        page = await client.getChatHistory(
+          contact,
+          HISTORY_PAGE_SIZE,
+          request.beforeMessageId
+        );
+      }
+    } catch {
+      page = null;
+    }
+
+    if (!pagination.isCurrent(request)) return;
+    const active = activeSessionRef.current;
+    if (!active || sessionKey(active) !== key) {
+      pagination.complete(request, null);
+      return;
+    }
+    if (page === null) {
+      pagination.complete(request, null);
+      setStatusMsg(`History unavailable · ${contact.name}`);
+      return;
+    }
+
+    const sessionPage = page.filter((message) => belongsToSession(message, contact));
+    const { messages: merged, added } = mergeHistoryMessages(
+      messagesRef.current,
+      sessionPage
+    );
+    const addedForSession = added.filter((message) => belongsToSession(message, contact));
+    if (addedForSession.length > 0) {
+      unboundedHistorySessionsRef.current.add(retentionSessionKey(contact));
+      storeMessages(merged);
+    }
+
+    const completion = pagination.complete(
+      request,
+      sessionPage.length,
+      addedForSession.length
+    );
+    if (!completion) return;
+
+    if (addedForSession.length === 0) {
+      setStatusMsg(`No earlier history · ${contact.name}`);
+      return;
+    }
+
+    const currentMessages = messagesRef.current
+      .filter((message) => belongsToSession(message, contact))
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    // Prepending leaves the current viewport stable at the same bottom-based
+    // offset. If the user has not moved since requesting a page, advance by
+    // half a viewport to reveal part of the newly loaded records.
+    if (shouldAdvanceHistoryViewport(scrollVersion, scrollInteractionRef.current)) {
+      const viewport = messageViewportRef.current;
+      setMessageScrollOffsetValue(
+        moveMessageScrollOffset(
+          currentMessages,
+          viewport.bodyRows,
+          viewport.selfId,
+          viewport.termWidth,
+          viewport.cellWidth,
+          viewport.cellHeight,
+          viewport.imageMode,
+          viewport.messageGap,
+          messageScrollOffsetRef.current,
+          "older",
+          viewport.mentionLabels
+        )
+      );
+    }
+    setStatusMsg(`${addedForSession.length} earlier messages loaded · ${contact.name}`);
   }
 
   function rememberSentMessage(
@@ -1586,7 +1736,8 @@ export function App() {
     }
     updateCmuxPreview(contact, sent);
     if (activeSessionRef.current && sessionKey(activeSessionRef.current) === sessionKey(contact)) {
-      setMessageScrollOffset(0);
+      scrollInteractionRef.current += 1;
+      setMessageScrollOffsetValue(0);
     }
   }
 
