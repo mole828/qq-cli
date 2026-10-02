@@ -27,7 +27,7 @@ qq-cli 的界面目标是做成一个低干扰的终端消息工作台，而不�
 - 通过 `/audio <path>`（或 `/record <path>`）发送独立语音消息，支持 `~`、相对路径、`file://` 和 Tab 路径补全
 - 接收并展示私聊、群聊消息
 - 每个会话独立保留最近 500 条消息；活跃群聊只淘汰自己的旧记录，不影响其他会话。此限制仅作用于客户端内存，不删除 QQ 服务端记录。未读数继续累计，提及标记只统计保留的消息。
-- 被群成员 `@` 当前账号时，通过 cmux 发送提醒
+- 被群成员 `@` 或回复当前账号的消息时，通过 cmux 发送提醒
 - 在会话切换面板和状态栏单独显示收到的提及数量
 - 使用 `/session` 临时会话面板切换聊天
 - 在会话面板中显示未读数和最近消息摘要
@@ -110,7 +110,9 @@ QQ_CLI_IMAGE_MODE=inline npm run dev
 QQ_CLI_CMUX=off npm run dev
 ```
 
-mention 模式同时控制 cmux 提醒和未查看 mention 计数。默认模式是 `direct`；设置为 `off` 可关闭 mention 提示和计数，设置为 `all` 才会把 `@全体成员` 也作为 mention：
+mention 模式同时控制 cmux 提醒和未查看 mention 计数。默认模式是 `direct`，包括明确 `@` 当前账号和回复当前账号发出的消息；设置为 `off` 可关闭 mention 提示和计数，设置为 `all` 才会把 `@全体成员` 也作为 mention：
+
+回复优先从已加载的当前会话消息确认原发送者，未加载的原消息通过 OneBot `get_msg` 查询；查询失败或无法确认原发送者时，不会仅凭 reply 触发提醒。同一条消息同时包含 reply 和 `@` 时只计一次 mention。
 
 ```bash
 QQ_CLI_CMUX_MENTION=off npm run dev
@@ -127,7 +129,7 @@ QQ_CLI_CMUX_PATH=/Applications/cmux.app/Contents/Resources/bin/cmux npm run dev
 
 提醒仅针对运行期间新收到的消息，不会因为打开历史记录而重复触发；此前版本已经产生的 notification history 不会被新通道自动删除。
 
-运行期间在非当前会话中新收到的 mention 会按当前模式单独累计为 `mention`，不会和 `unread` 合并；`direct` 只统计明确提及当前账号，`all` 也统计 `@全体成员`，`off` 不统计 mention；消息仍会计入普通 `unread`。打开 cmux 提醒只负责聚焦对应 workspace，不会自动切换 qq-cli 会话。
+运行期间在非当前会话中新收到的 mention 会按当前模式单独累计为 `mention`，不会和 `unread` 合并；`direct` 统计明确 `@` 当前账号或回复当前账号的消息，`all` 也统计 `@全体成员`，`off` 不统计 mention；消息仍会计入普通 `unread`。打开 cmux 提醒只负责聚焦对应 workspace，不会自动切换 qq-cli 会话。
 
 在会话选择器中真正进入某个会话后，该会话已有的 `unread` 和 `mention` 会一起清除；选择器中仅移动高亮不会清除状态。composer 和选择器顶部显示的是所有会话的合计数，因此进入一个会话后仍显示数字时，表示其他会话还有待处理消息。
 
@@ -189,7 +191,7 @@ NapCat 的配置、插件和 QQ 登录数据会分别保存在：
 | `/groups [关键词]` 或 `/g` | 搜索群聊 |
 | `/friends [关键词]` 或 `/f` | 搜索好友 |
 | `/images off\|inline` | 设置图片显示模式 |
-| `/mention [direct\|off\|all]` | 设置 mention 模式和 cmux @提醒；默认只统计明确 @ 当前账号 |
+| `/mention [direct\|off\|all]` | 设置 mention 模式和 cmux 提醒；默认统计 @ 当前账号和回复自己的消息 |
 | `/faces [refresh]` | 加载并浏览自定义表情；`refresh` 清理临时索引后重载，按 Esc 返回 composer |
 | `/audio <path>` 或 `/record <path>` | 发送独立语音消息；支持 `~`、相对路径、`file://` 和 Tab 补全 |
 | `/echo` | 在当前群聊最近 10 条消息中找到最新的重复消息并发送 |

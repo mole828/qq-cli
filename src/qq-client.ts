@@ -446,6 +446,17 @@ export class QQClient {
     return messages;
   }
 
+  async getMessageSenderId(messageId: string): Promise<number | null> {
+    const numericId = Number(messageId);
+    const res = await this.callApi("get_msg", {
+      message_id: Number.isSafeInteger(numericId) ? numericId : messageId,
+    });
+    const data = res.data as { sender?: { user_id?: unknown } } | null;
+    const senderId = Number(data?.sender?.user_id);
+    return res.status === "ok" && Number.isFinite(senderId) && senderId > 0
+      ? senderId : null;
+  }
+
   async sendMessage(
     chatType: "private" | "group",
     targetId: number,

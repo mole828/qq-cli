@@ -111,6 +111,8 @@ export interface ChatMessage {
   isMine: boolean;
   group_id?: number;
   segments?: MessageSegment[];
+  /** Sender of the message referenced by a reply, resolved for mention detection. */
+  replySenderId?: number;
 }
 
 export interface ReplyTarget {

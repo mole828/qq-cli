@@ -56,8 +56,10 @@ import {
   compactMessage,
   getForwardIdsFromText,
   getForwardSegmentId,
+  getReplyMessageId,
   messageMentionsUser,
 } from "./message-format.js";
+import { logger } from "./logger.js";
 import {
   cloneEchoContent,
   ECHO_RECENT_MESSAGE_LIMIT,
@@ -232,6 +234,7 @@ export function App() {
   const mentionLabelsRef = useRef<MentionLabelLookup>(new Map());
   const mentionModeRef = useRef<CmuxMentionMode>(getInitialCmuxMentionMode());
   const pendingMentionMessagesRef = useRef(new Map<string, ChatMessage>());
+  const sessionReadVersionsRef = useRef(new Map<string, number>());
   const forwardRequestRef = useRef(0);
 
   const [connected, setConnected] = useState(false);
@@ -593,6 +596,7 @@ export function App() {
       process.env.ONEBOT_WS_URL || "ws://localhost:3001"
     );
     qqRef.current = client;
+    let disposed = false;
 
     client.onStatus((status) => {
       setConnected(status);
@@ -622,21 +626,53 @@ export function App() {
       const isCurrentSession = Boolean(
         current && belongsToSession(msg, current)
       );
-      const isMention = !msg.isMine && messageMentionsUser(msg, client.getSelfId(), {
-        includeAll: true,
-      });
-      if (isMention && !isCurrentSession) {
-        pendingMentionMessagesRef.current.set(key, msg);
-        refreshMentionCounts(mentionModeRef.current, client.getSelfId());
+      const readVersion = sessionReadVersionsRef.current.get(messageSessionKey);
+      let mentionNotified = false;
+      const registerMention = (message: ChatMessage) => {
+        if (disposed || sessionReadVersionsRef.current.get(messageSessionKey) !== readVersion) return;
+        if (!messagesRef.current.some((item) => messageKey(item) === key)) return;
+        const isMention = !message.isMine && messageMentionsUser(message, client.getSelfId(), {
+          includeAll: true,
+        });
+        if (!isMention) return;
+        if (!isCurrentSession) {
+          pendingMentionMessagesRef.current.set(key, message);
+          refreshMentionCounts(mentionModeRef.current, client.getSelfId());
+        }
+        const mode = mentionModeRef.current;
+        if (mentionNotified || mode === "off" || !messageMentionsUser(message, client.getSelfId(), {
+          includeAll: mode === "all",
+        })) return;
+        mentionNotified = true;
+        cmuxPreviewRef.current?.notifyMention(
+          messageContact,
+          message,
+          client.getSelfId(),
+          activeSessionRef.current && belongsToSession(message, activeSessionRef.current)
+            ? mentionLabelsRef.current
+            : undefined
+        );
+      };
+      const replyId = getReplyMessageId(msg);
+      if (!msg.isMine && replyId !== null && !messageMentionsUser(msg, client.getSelfId())) {
+        const target = messagesRef.current.find((message) =>
+          belongsToSession(message, messageContact) && String(message.id) === replyId
+        );
+        if (target) {
+          registerMention({ ...msg, replySenderId: target.senderId });
+        } else {
+          // An at-all mention can notify immediately while its reply is resolved.
+          registerMention(msg);
+          void client.getMessageSenderId(replyId).then((replySenderId) => {
+            registerMention(replySenderId === null ? msg : { ...msg, replySenderId });
+          }).catch((error: unknown) => {
+            logger.warn("Failed to resolve reply mention", { messageId: replyId, error: String(error) });
+            registerMention(msg);
+          });
+        }
+      } else {
+        registerMention(msg);
       }
-      cmuxPreviewRef.current?.notifyMention(
-        messageContact,
-        msg,
-        client.getSelfId(),
-        current && belongsToSession(msg, current)
-          ? mentionLabelsRef.current
-          : undefined
-      );
       if (current && isCurrentSession) {
         updateCmuxPreview(current, msg);
         if (messageScrollOffsetRef.current > 0) {
@@ -670,6 +706,7 @@ export function App() {
     client.connect();
 
     return () => {
+      disposed = true;
       client.disconnect();
     };
   }, []);
@@ -1545,6 +1582,7 @@ export function App() {
   function handleSession(contact: Contact) {
     if (contacts.some((item) => sessionKey(item) === sessionKey(contact))) {
       const key = sessionKey(contact);
+      sessionReadVersionsRef.current.set(key, (sessionReadVersionsRef.current.get(key) || 0) + 1);
       const previous = activeSessionRef.current;
       if (previous && sessionKey(previous) !== key) {
         historyPaginationRef.current.reset(sessionKey(previous));

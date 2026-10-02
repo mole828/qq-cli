@@ -139,12 +139,38 @@ function rawMessageMentionsUser(raw: string, selfId: number, includeAll: boolean
   });
 }
 
+export function getReplyMessageId(msg: ChatMessage): string | null {
+  const normalizeId = (value: unknown) => {
+    if (typeof value === "string") return value.trim() || null;
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    return null;
+  };
+  for (const segment of msg.segments || []) {
+    if (segment.type.toLowerCase() === "reply") {
+      const id = normalizeId(segment.data.id);
+      if (id !== null) return id;
+    }
+  }
+  const texts = [msg.content, ...(msg.segments || []).flatMap((segment) =>
+    segment.type.toLowerCase() === "text" && typeof segment.data.text === "string"
+      ? [segment.data.text] : []
+  )];
+  for (const text of texts) {
+    for (const match of text.matchAll(/\[CQ:reply((?:,[^\]]*)?)\]/gi)) {
+      const id = normalizeId(parseCQAttrs(match[1]).id);
+      if (id !== null) return id;
+    }
+  }
+  return null;
+}
+
 export function messageMentionsUser(
   msg: ChatMessage,
   selfId: number,
   options?: { includeAll?: boolean }
 ) {
   if (!Number.isFinite(selfId) || selfId <= 0) return false;
+  if (msg.replySenderId === selfId) return true;
   const includeAll = options?.includeAll ?? false;
 
   const structuredMention = msg.segments?.some((segment) => {
