@@ -26,6 +26,7 @@ import type {
   StickerItem,
 } from "./types.js";
 import { QQClient } from "./qq-client.js";
+import type { ResumeSession } from "./RestartOnResume.js";
 import { retainSessionMessages } from "./message-retention.js";
 import {
   earliestHistoryMessage,
@@ -197,7 +198,12 @@ interface ForwardView {
   requestId: number;
 }
 
-export function App() {
+interface AppProps {
+  resumeSession?: ResumeSession | null;
+  onSessionChange?: (session: ResumeSession) => void;
+}
+
+export function App({ resumeSession = null, onSessionChange }: AppProps = {}) {
   const { columns, rows } = useWindowSize();
   const { exit } = useApp();
   const terminalInfo = useTerminalInfo();
@@ -214,6 +220,7 @@ export function App() {
   const qqRef = useRef<QQClient | null>(null);
   const loadedRef = useRef(false);
   const activeSessionRef = useRef<Contact | null>(null);
+  const pendingResumeSessionRef = useRef(resumeSession);
   const contactsRef = useRef<Contact[]>([]);
   const historyPaginationRef = useRef(new HistoryPagination());
   const unboundedHistorySessionsRef = useRef(new Set<string>());
@@ -713,6 +720,7 @@ export function App() {
 
   useEffect(() => {
     if (!connected || loadedRef.current) return;
+    let cancelled = false;
 
     (async () => {
       const client = qqRef.current;
@@ -721,6 +729,7 @@ export function App() {
       void client
         .getRecentContactActivity(RECENT_CONTACT_LIMIT)
         .then((recentActivity) => {
+          if (cancelled) return;
           setRecentActivityAt(
             Object.fromEntries(
               recentActivity.map(({ contact, timestamp }) => [
@@ -737,21 +746,28 @@ export function App() {
 
       try {
         const info = await client.getLoginInfo();
-        if (!info.user_id) return;
+        if (cancelled || !info.user_id) return;
         setSelfId(info.user_id);
         setNickname(info.nickname);
-        loadedRef.current = true;
-
         const friends = await client.getFriendList();
         const groups = await client.getGroupList();
+        if (cancelled) return;
+        loadedRef.current = true;
         const all = [...friends, ...groups];
         contactsRef.current = all;
         setContacts(all);
         setStatusMsg(`${all.length} sessions indexed`);
+        const resume = pendingResumeSessionRef.current;
+        pendingResumeSessionRef.current = null;
+        if (resume && resume.selfId === info.user_id && !activeSessionRef.current) {
+          const contact = all.find((item) => item.type === resume.type && item.id === resume.id);
+          if (contact) handleSession(contact);
+        }
       } catch {
-        setStatusMsg("Failed to load session index");
+        if (!cancelled) setStatusMsg("Failed to load session index");
       }
     })();
+    return () => { cancelled = true; };
   }, [connected]);
 
   // ---- picker computations ----
@@ -1580,7 +1596,8 @@ export function App() {
   });
 
   function handleSession(contact: Contact) {
-    if (contacts.some((item) => sessionKey(item) === sessionKey(contact))) {
+    if (contactsRef.current.some((item) => sessionKey(item) === sessionKey(contact))) {
+      pendingResumeSessionRef.current = null;
       const key = sessionKey(contact);
       sessionReadVersionsRef.current.set(key, (sessionReadVersionsRef.current.get(key) || 0) + 1);
       const previous = activeSessionRef.current;
@@ -1595,6 +1612,11 @@ export function App() {
       setInputText("");
       activeSessionRef.current = contact;
       setActiveSession(contact);
+      onSessionChange?.({
+        selfId: qqRef.current?.getSelfId() || selfId,
+        type: contact.type,
+        id: contact.id,
+      });
       updateCmuxPreview(contact);
       setUnreadCounts((prev) => clearSessionCount(prev, key));
       for (const [messageKey, message] of pendingMentionMessagesRef.current) {
