@@ -7,7 +7,7 @@ import { join } from "node:path";
 import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { Box, Text } from "ink";
 import Image, { useTerminalInfo } from "ink-picture";
-import { Jimp } from "jimp";
+import { createImagePreparationQueue, prepareImageThumbnail } from "../image-preparation.js";
 import { prepareGif, type GifAnimation } from "../gif.js";
 import { setImageFormat } from "../image-format.js";
 import { logger } from "../logger.js";
@@ -39,6 +39,7 @@ interface PreparedImage {
   mime?: string;
   dimensions: ImageDimensions;
   renderSource: string;
+  animationSource?: string;
 }
 
 const imageMetadataCache = new Map<string, Promise<PreparedImage | null>>();
@@ -50,6 +51,7 @@ const pendingImageSources = new Set<string>();
 const metadataListeners = new Set<() => void>();
 let metadataVersion = 0;
 let imageTempDirPromise: Promise<string> | null = null;
+const runImagePreparation = createImagePreparationQueue();
 
 function getImageTempDir() {
   if (!imageTempDirPromise) {
@@ -138,19 +140,22 @@ function prepareImage(
   let pending = imageMetadataCache.get(source);
   if (!pending) {
     pendingImageSources.add(source);
-    pending = loadImageWithFallback(source, file, resolveSource)
-      .then(async (loadedSource) => ({
-        image: await Jimp.read(loadedSource),
-        renderSource: await cacheRenderSource(source, loadedSource),
-      }))
-      .then(({ image, renderSource }) => ({
-        mime: image.mime,
-        dimensions: {
-          width: image.bitmap.width,
-          height: image.bitmap.height,
-        },
+    pending = runImagePreparation(async () => {
+      const loadedSource = await loadImageWithFallback(source, file, resolveSource);
+      const thumbnail = await prepareImageThumbnail(loadedSource);
+      // ink-picture caches decoded bitmaps. Give it only the small preview,
+      // while retaining original dimensions for layout and GIF bytes on disk.
+      const renderSource = await cacheRenderSource(`${source}:thumbnail`, thumbnail.bytes);
+      const animationSource = thumbnail.mime === "image/gif"
+        ? await cacheRenderSource(source, loadedSource)
+        : undefined;
+      return {
+        mime: thumbnail.mime,
+        dimensions: thumbnail.dimensions,
         renderSource,
-      }))
+        animationSource,
+      };
+    })
       .catch((error: unknown) => {
         let host = "local";
         try {
@@ -464,7 +469,7 @@ export function ImagePreview({
       overflow="hidden"
     >
       {preparedImage && previewSize ? (
-        animate ? <ExperimentalGifPreview key={preparedImage.renderSource} source={preparedImage.renderSource}
+        animate ? <ExperimentalGifPreview key={preparedImage.renderSource} source={preparedImage.animationSource ?? preparedImage.renderSource}
           width={previewSize.width} height={previewSize.height}
           forceHalfBlock={clipped || forceHalfBlock} /> : <Image
           key={`${terminalInfo.cellWidth}x${terminalInfo.cellHeight}`}
