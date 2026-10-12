@@ -4,16 +4,22 @@
   "description": "Terminal QQ chat client powered by OneBot v11",
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/patch-ink-caches.js",
+    "predev": "node scripts/patch-ink-caches.js",
     "dev": "tsx src/index.tsx",
     "history:capture": "tsx src/capture-history.ts",
+    "prebuild": "node scripts/patch-ink-caches.js",
     "build": "tsc",
+    "prestart": "node scripts/patch-ink-caches.js",
     "start": "node dist/index.js",
+    "pretest": "node scripts/patch-ink-caches.js",
     "test": "node --import tsx --test tests/*.test.tsx",
+    "pregif:demo": "node scripts/patch-ink-caches.js",
     "gif:demo": "node --import tsx src/gif-demo.tsx"
   },
   "dependencies": {
     "clipboard-image": "^0.1.0",
-    "ink": "^7.1.0",
+    "ink": "7.1.0",
     "ink-picture": "^2.1.0",
     "ink-text-input": "^6.0.0",
     "jimp": "^1.6.1",
