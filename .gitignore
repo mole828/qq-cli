@@ -7,6 +7,7 @@ dist/
 logs/
 .container-data/
 .local/
+.qoder/settings.local.json
 .env
 .env.*
 !.env.example
