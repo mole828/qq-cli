@@ -72,3 +72,33 @@ test("session candidates search by name or ID and insert a typed canonical targe
     ["/session group:300"]
   );
 });
+
+test("fixed-vocabulary command arguments complete for ui, images, and mention", () => {
+  assert.deepEqual(
+    getCommandCompletions("/ui ", [], [], null).map((item) => item.value),
+    ["/ui classic", "/ui qoder"]
+  );
+  assert.deepEqual(
+    getCommandCompletions("/ui q", [], [], null).map((item) => item.value),
+    ["/ui qoder"]
+  );
+  assert.deepEqual(
+    getCommandCompletions("/images ", [], [], null).map((item) => item.value),
+    ["/images off", "/images inline"]
+  );
+  assert.deepEqual(
+    getCommandCompletions("/mention d", [], [], null).map((item) => item.value),
+    ["/mention direct"]
+  );
+  assert.deepEqual(getCommandCompletions("/ui classic extra", [], [], null), []);
+  // Exact arguments disappear from the list so Enter executes the command.
+  assert.deepEqual(getCommandCompletions("/mention off", [], [], null), []);
+  assert.deepEqual(getCommandCompletions("/ui qoder", [], [], null), []);
+});
+
+test("ui command name completes with an argument space", () => {
+  assert.deepEqual(
+    getCommandCompletions("/u", [], [], null),
+    [{ value: "/ui ", label: "/ui [classic|qoder]", description: "查看或切换终端 UI 风格" }]
+  );
+});

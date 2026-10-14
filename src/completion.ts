@@ -27,6 +27,7 @@ export const COMPLETABLE_COMMANDS = [
   "/echo",
   "/forward",
   "/reply",
+  "/ui",
   "/reload",
   "/help",
   "/exit",
@@ -55,6 +56,7 @@ const COMMAND_HINTS: Record<typeof COMPLETABLE_COMMANDS[number], { args?: string
   "/echo": { description: "复读群内最近的重复消息" },
   "/forward": { args: "<消息ID>", description: "查看合并转发内容" },
   "/reply": { args: "<消息ID>", description: "设置当前会话的回复目标" },
+  "/ui": { args: "[classic|qoder]", description: "查看或切换终端 UI 风格" },
   "/reload": { description: "重新加载账号和会话列表" },
   "/help": { description: "查看命令和快捷键" },
   "/exit": { description: "退出程序" },
@@ -69,7 +71,42 @@ const COMMANDS_WITH_ARGUMENTS = new Set([
   "/forward",
   "/images",
   "/mention",
+  "/ui",
 ]);
+
+/** Fixed argument vocabularies completed after the command name. */
+const COMMAND_ARGUMENT_VALUES: Record<string, { value: string; description: string }[]> = {
+  "/ui": [
+    { value: "classic", description: "原灰底块风格" },
+    { value: "qoder", description: "黑底绿色 Qoder 风格" },
+  ],
+  "/images": [
+    { value: "off", description: "图片压缩为 [image]" },
+    { value: "inline", description: "支持的终端内联缩略图" },
+  ],
+  "/mention": [
+    { value: "direct", description: "@ 自己和回复自己时提醒" },
+    { value: "off", description: "关闭 mention 提醒和计数" },
+    { value: "all", description: "@全体成员 也提醒" },
+  ],
+};
+
+function completeEnumArguments(command: string, query: string): CompletionItem[] {
+  const values = COMMAND_ARGUMENT_VALUES[command];
+  if (!values || /\s/.test(query)) return [];
+
+  const normalized = query.trim().toLowerCase();
+  // An exact argument match executes on Enter instead of re-offering itself.
+  if (values.some((item) => item.value === normalized)) return [];
+
+  return values
+    .filter((item) => item.value.startsWith(normalized))
+    .map((item) => ({
+      value: `${command} ${item.value}`,
+      label: `${command} ${item.value}`,
+      description: item.description,
+    }));
+}
 
 function belongsToSession(message: ChatMessage, contact: Contact) {
   return (
@@ -189,5 +226,5 @@ export function getCommandCompletions(
   if ((command === "/reply" || command === "/forward") && session) {
     return completeMessages(command, query, messages, session);
   }
-  return [];
+  return completeEnumArguments(command, query);
 }

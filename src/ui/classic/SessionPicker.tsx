@@ -1,8 +1,8 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { ChatMessage, Contact } from "../types.js";
-import { compactMessage } from "../message-format.js";
-import { truncateCells } from "../terminal-text.js";
+import type { ChatMessage, Contact } from "../../types.js";
+import { compactMessage } from "../../message-format.js";
+import { truncateCells } from "../../terminal-text.js";
 
 interface SessionPickerProps {
   contacts: Contact[];

@@ -5,17 +5,18 @@ import type {
   Contact,
   ImageSourceResolver,
   MentionLabelLookup,
-} from "../types.js";
-import type { ImageMode } from "../config.js";
-import { compactMessage, getImageReferences } from "../message-format.js";
+} from "../../types.js";
+import type { ImageMode } from "../../config.js";
+import { compactMessage, getImageReferences } from "../../message-format.js";
 import {
   linkifyUrls,
   singleLine,
   textWidth,
   truncateCells,
   wrapCells,
-} from "../terminal-text.js";
-import { ImageStrip } from "./ImageStrip.js";
+} from "../../terminal-text.js";
+import { ImageStrip } from "../ImageStrip.js";
+import { ACCENT, BULLET_GLYPH, PROMPT_GLYPH } from "./palette.js";
 
 const MAX_BODY_LINES = 3;
 
@@ -86,7 +87,7 @@ export function MessageRow({
     imageMode === "inline" && renderInlineImage ? getImageReferences(msg) : [];
 
   if (isMine) {
-    const promptBg = "#3a3a3a";
+    const promptBg = undefined;
     const promptWidth = Math.max(rowWidth - 4, 8);
     const contentLines = wrapCells(
       rawContent || "(empty)",
@@ -119,7 +120,9 @@ export function MessageRow({
               backgroundColor={promptBg}
               wrap="truncate-end"
             >
-              <Text bold>{lineIndex === 0 ? "› " : "  "}</Text>
+              <Text bold color={ACCENT}>
+                {lineIndex === 0 ? `${PROMPT_GLYPH} ` : "  "}
+              </Text>
               {line}
             </Text>
           ))}
@@ -167,12 +170,12 @@ export function MessageRow({
     >
       <Box flexDirection="row" height={1} overflow="hidden">
         <Box width={2} flexShrink={0}>
-          <Text color={selected ? "yellow" : undefined} dimColor={!selected}>
-            {selected ? "▸" : "•"}
+          <Text color={selected ? ACCENT : undefined} dimColor={!selected}>
+            {selected ? "▸" : BULLET_GLYPH}
           </Text>
         </Box>
-        <Text color={selected ? "yellow" : "white"} bold wrap="truncate-end">
-          <Text color={selected ? "yellow" : "cyan"} dimColor={!selected}>
+        <Text color={selected ? ACCENT : "white"} bold wrap="truncate-end">
+          <Text color={selected ? ACCENT : "gray"} dimColor={!selected}>
             {messageIdLabel}
           </Text>
           <Text> {senderLabel}</Text>

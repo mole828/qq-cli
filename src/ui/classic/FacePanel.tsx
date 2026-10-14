@@ -1,46 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Box, Text } from "ink";
-import type { ImageSourceResolver, StickerItem } from "../types.js";
-import { truncateCells } from "../terminal-text.js";
-import { ImagePreview, usePinnedImageSources } from "./ImagePreview.js";
+import type { ImageSourceResolver, StickerItem } from "../../types.js";
+import { truncateCells } from "../../terminal-text.js";
+import { getFacePanelLayout } from "../layout.js";
+import { ImagePreview, usePinnedImageSources } from "../ImagePreview.js";
 
 const PANEL_PADDING = 2;
-const HEADER_ROWS = 3;
 const SELECTED_PREVIEW_ROWS = 5;
 const SLOT_HEIGHT = 5;
 const MIN_SLOT_WIDTH = 16;
-const MAX_SLOT_WIDTH = 26;
 const LOADING_FRAMES = ["|", "/", "-", "\\"];
 
-export interface FacePanelLayout {
-  columns: number;
-  rows: number;
-  visibleCount: number;
-  slotWidth: number;
-  gridHeight: number;
-}
-
-export function getFacePanelLayout(
-  bodyRows: number,
-  termWidth: number
-): FacePanelLayout {
-  const panelWidth = Math.max(termWidth - PANEL_PADDING, MIN_SLOT_WIDTH);
-  const slotWidth = Math.min(
-    MAX_SLOT_WIDTH,
-    Math.max(Math.floor(panelWidth / 4), MIN_SLOT_WIDTH)
-  );
-  const columns = Math.max(Math.floor(panelWidth / slotWidth), 1);
-  const gridHeight = Math.max(bodyRows - HEADER_ROWS - SELECTED_PREVIEW_ROWS, SLOT_HEIGHT);
-  const rows = Math.max(Math.floor(gridHeight / SLOT_HEIGHT), 1);
-
-  return {
-    columns,
-    rows,
-    visibleCount: columns * rows,
-    slotWidth,
-    gridHeight: rows * SLOT_HEIGHT,
-  };
-}
+export { getFacePanelLayout } from "../layout.js";
 
 interface FacePanelProps {
   items: StickerItem[];

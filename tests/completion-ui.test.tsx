@@ -8,7 +8,7 @@ import { PassThrough, Writable } from 'node:stream';
 import { render, renderToString } from 'ink';
 import { App } from '../src/App.js';
 import { QQClient } from '../src/qq-client.js';
-import { CompletionPanel } from '../src/ui/CompletionPanel.js';
+import { CompletionPanel } from '../src/ui/classic/CompletionPanel.js';
 import { textWidth } from '../src/terminal-text.js';
 
 test('completion panel keeps five rows and clips multiline, wide previews', () => {

@@ -23,6 +23,7 @@ interface PasteAwareTextInputProps {
   onPaste?: (value: string, cursorOffset: number) => boolean;
   focus?: boolean;
   placeholder?: string;
+  placeholderColor?: string;
   inlinePickerOpen?: boolean;
 }
 
@@ -37,6 +38,7 @@ export function PasteAwareTextInput({
   onPaste,
   focus = true,
   placeholder = "",
+  placeholderColor = "gray",
   inlinePickerOpen = false,
 }: PasteAwareTextInputProps) {
   usePaste(
@@ -140,7 +142,7 @@ export function PasteAwareTextInput({
   const layout = getComposerInputLayout(parts, cursorOffset, width, maxRows);
   const safeCursor = Math.min(Math.max(cursorOffset, 0), composerLength(parts));
   if (composerLength(parts) === 0) {
-    return <Text wrap="truncate-end"><Text inverse>{placeholder[0] || " "}</Text><Text color="gray">{placeholder.slice(1)}</Text></Text>;
+    return <Text wrap="truncate-end"><Text inverse>{placeholder[0] || " "}</Text><Text color={placeholderColor}>{placeholder.slice(1)}</Text></Text>;
   }
   return (
     <Box flexDirection="column" width={width}>

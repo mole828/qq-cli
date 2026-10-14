@@ -1,8 +1,8 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { InlineInsertItem } from "../types.js";
-import { truncateCells } from "../terminal-text.js";
-import { INLINE_PICKER_ROWS } from "./layout.js";
+import type { InlineInsertItem } from "../../types.js";
+import { truncateCells } from "../../terminal-text.js";
+import { INLINE_PICKER_ROWS } from "../layout.js";
 
 const PANEL_BACKGROUND = "#303030";
 const VISIBLE_ITEMS = INLINE_PICKER_ROWS - 2;

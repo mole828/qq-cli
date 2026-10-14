@@ -1,10 +1,10 @@
-import type { CompletionItem } from "../completion.js";
-import { getComposerInputLayout } from "../composer-layout.js";
+import type { CompletionItem } from "../../completion.js";
+import { getComposerInputLayout } from "../../composer-layout.js";
 import React from "react";
 import { Box, useWindowSize } from "ink";
 import { useTerminalInfo } from "ink-picture";
-import type { ComposerPart } from "../composer-draft.js";
-import type { ImageMode } from "../config.js";
+import type { ComposerPart } from "../../composer-draft.js";
+import type { ImageMode } from "../../config.js";
 import type {
   ChatMessage,
   Contact,
@@ -12,14 +12,14 @@ import type {
   InlineInsertItem,
   MentionLabelLookup,
   ReplyTarget,
-} from "../types.js";
-import { getComposerRows, getComposerInputWidth, TERMINAL_GUTTER_ROWS } from "./layout.js";
+} from "../../types.js";
+import { getComposerRows, getComposerInputWidth, TERMINAL_GUTTER_ROWS } from "../layout.js";
 import { Composer } from "./Composer.js";
 import {
   getMaxMessageScrollOffset,
   MessageList,
 } from "./MessageList.js";
-import { useImageMetadataVersion } from "./ImagePreview.js";
+import { useImageMetadataVersion } from "../ImagePreview.js";
 
 export interface ChatPageState {
   session: Contact;

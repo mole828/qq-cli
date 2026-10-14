@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import React from 'react';
 import { renderToString } from 'ink';
-import { MessageRow } from '../src/ui/MessageRow.js';
+import { MessageRow } from '../src/ui/classic/MessageRow.js';
 import type { ChatMessage } from '../src/types.js';
 
 for (const isMine of [false, true]) {

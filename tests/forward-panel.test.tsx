@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import React from 'react';
 import { renderToString } from 'ink';
-import { ForwardPanel, getForwardPanelMaxOffset, getForwardPanelScrollOffset } from '../src/ui/ForwardPanel.js';
+import { ForwardPanel, getForwardPanelMaxOffset, getForwardPanelScrollOffset } from '../src/ui/classic/ForwardPanel.js';
 import type { ForwardNode } from '../src/types.js';
 
 const nodes: ForwardNode[] = Array.from({length: 8}, (_, index) => ({

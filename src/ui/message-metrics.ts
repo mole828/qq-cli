@@ -1,8 +1,5 @@
-import React from "react";
 import type {
   ChatMessage,
-  Contact,
-  ImageSourceResolver,
   MentionLabelLookup,
 } from "../types.js";
 import type { ImageMode } from "../config.js";
@@ -12,12 +9,13 @@ import {
   getImagePreviewHeight,
   IMAGE_PREVIEW_HEIGHT,
 } from "./ImagePreview.js";
-import { MessageRow } from "./MessageRow.js";
 
-const MAX_BODY_LINES = 3;
-const INLINE_IMAGE_ROW_COST = IMAGE_PREVIEW_HEIGHT;
+export { IMAGE_PREVIEW_HEIGHT };
 
-function getImageStripHeight(
+export const MAX_BODY_LINES = 3;
+export const INLINE_IMAGE_ROW_COST = IMAGE_PREVIEW_HEIGHT;
+
+export function getImageStripHeight(
   sources: string[],
   cellWidth: number,
   cellHeight: number
@@ -29,35 +27,18 @@ function getImageStripHeight(
   );
 }
 
-function buildReplyLookup(messages: ChatMessage[]) {
+export function buildReplyLookup(messages: ChatMessage[]) {
   return new Map(messages.map((message) => [String(message.id), message]));
 }
 
-interface VisibleMessage {
+export interface VisibleMessage {
   msg: ChatMessage;
   cropTop: number;
   visibleRows: number;
   clipped: boolean;
 }
 
-interface MessageListProps {
-  messages: ChatMessage[];
-  selfId: number;
-  activeSession: Contact | null;
-  termWidth: number;
-  cellWidth: number;
-  cellHeight: number;
-  bodyRows: number;
-  imageMode: ImageMode;
-  scrollOffset: number;
-  messageGap: number;
-  selectedMessageId?: string | null;
-  forwardSegmentId?: boolean;
-  mentionLabels?: MentionLabelLookup;
-  resolveImageSource?: ImageSourceResolver;
-}
-
-function getMessageRowCost(
+export function getMessageRowCost(
   msg: ChatMessage,
   selfId: number,
   termWidth: number,
@@ -118,37 +99,7 @@ export function getMessageScrollRows(
   );
 }
 
-export function moveMessageScrollOffset(
-  messages: ChatMessage[],
-  bodyRows: number,
-  selfId: number,
-  termWidth: number,
-  cellWidth: number,
-  cellHeight: number,
-  imageMode: ImageMode,
-  messageGap: number,
-  currentOffset: number,
-  direction: "older" | "newer",
-  mentionLabels?: MentionLabelLookup
-) {
-  const targetRows = Math.max(Math.floor(bodyRows / 2), 1);
-  const maxOffset = getMaxMessageScrollOffset(
-    messages,
-    bodyRows,
-    selfId,
-    termWidth,
-    cellWidth,
-    cellHeight,
-    imageMode,
-    messageGap,
-    false,
-    mentionLabels
-  );
-  const delta = direction === "older" ? targetRows : -targetRows;
-  return clampOffset(currentOffset + delta, maxOffset);
-}
-
-function clampOffset(value: number, max: number) {
+export function clampOffset(value: number, max: number) {
   return Math.min(Math.max(value, 0), max);
 }
 
@@ -186,6 +137,36 @@ export function getMaxMessageScrollOffset(
   );
 
   return Math.max(totalRows - bodyRows, 0);
+}
+
+export function moveMessageScrollOffset(
+  messages: ChatMessage[],
+  bodyRows: number,
+  selfId: number,
+  termWidth: number,
+  cellWidth: number,
+  cellHeight: number,
+  imageMode: ImageMode,
+  messageGap: number,
+  currentOffset: number,
+  direction: "older" | "newer",
+  mentionLabels?: MentionLabelLookup
+) {
+  const targetRows = Math.max(Math.floor(bodyRows / 2), 1);
+  const maxOffset = getMaxMessageScrollOffset(
+    messages,
+    bodyRows,
+    selfId,
+    termWidth,
+    cellWidth,
+    cellHeight,
+    imageMode,
+    messageGap,
+    false,
+    mentionLabels
+  );
+  const delta = direction === "older" ? targetRows : -targetRows;
+  return clampOffset(currentOffset + delta, maxOffset);
 }
 
 export function getMessageScrollOffsetForIndex(
@@ -242,7 +223,7 @@ export function getMessageScrollOffsetForIndex(
   return offset;
 }
 
-function getVisibleMessages(
+export function getVisibleMessages(
   messages: ChatMessage[],
   bodyRows: number,
   selfId: number,
@@ -298,69 +279,4 @@ function getVisibleMessages(
   }
 
   return selected;
-}
-
-export function MessageList({
-  messages,
-  selfId,
-  activeSession,
-  termWidth,
-  cellWidth,
-  cellHeight,
-  bodyRows,
-  imageMode,
-  messageGap,
-  scrollOffset,
-  selectedMessageId,
-  forwardSegmentId = false,
-  mentionLabels,
-  resolveImageSource,
-}: MessageListProps) {
-  const canRenderInlineImages = bodyRows >= INLINE_IMAGE_ROW_COST;
-  const replyLookup = buildReplyLookup(messages);
-  const visibleMsgs = getVisibleMessages(
-    messages,
-    bodyRows,
-    selfId,
-    termWidth,
-    cellWidth,
-    cellHeight,
-    imageMode,
-    canRenderInlineImages,
-    messageGap,
-    scrollOffset,
-    forwardSegmentId,
-    mentionLabels
-  );
-
-  return (
-    <>
-      {visibleMsgs.map(({ msg, cropTop, visibleRows, clipped }, i) => (
-        <MessageRow
-          key={`${msg.chatType}:${msg.contactId}:${msg.id}`}
-          msg={msg}
-          index={i}
-          selfId={selfId}
-          activeSession={activeSession}
-          termWidth={termWidth}
-          imagePreviewHeight={getImageStripHeight(
-            getImageSources(msg),
-            cellWidth,
-            cellHeight
-          ) || IMAGE_PREVIEW_HEIGHT}
-          imageMode={imageMode}
-          renderInlineImage={canRenderInlineImages}
-          messageGap={messageGap}
-          cropTop={cropTop}
-          visibleRows={visibleRows}
-          clipped={clipped}
-          replyLookup={replyLookup}
-          selected={selectedMessageId === String(msg.id)}
-          forwardSegmentId={forwardSegmentId}
-          mentionLabels={mentionLabels}
-          resolveImageSource={resolveImageSource}
-        />
-      ))}
-    </>
-  );
 }

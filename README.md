@@ -106,6 +106,18 @@ QQ_CLI_IMAGE_MODE=inline npm run dev
 
 消息之间默认不留空行。需要恢复更松散的间距时，可以设置 `QQ_CLI_MESSAGE_GAP=1`。
 
+qq-cli 提供两套可切换的终端 UI：`classic`（默认，灰色块 + 多彩状态色）和 `qoder`（仿 Qoder CLI：黑底、绿色强调、`>` 提示符、无背景色块）。通过 `/ui` 命令即时切换并写入 `~/.qq-cli/config.json`；启动时优先级为 `--ui` 参数 > `QQ_CLI_UI` 环境变量 > 配置文件 > `classic`：
+
+```bash
+QQ_CLI_UI=qoder npm run dev
+npm run dev -- --ui qoder
+```
+
+```text
+/ui            # 在两套风格间切换
+/ui qoder      # 直接指定风格
+```
+
 如果在 cmux workspace 中运行，qq-cli 会把当前会话最新的一条消息写入 workspace description，显示在 cmux 侧栏标题下方；默认只在收到明确提及当前账号的消息时调用 `cmux notify` 发送提醒，`@全体成员` 不会触发。第一行显示会话和发送者，第二行开始显示压缩后的正文。短时间内连续到达的消息会合并，只保留最后一条待写入内容；正文最多保留约 512 个终端单元格，cmux description 最多显示 12 行。默认自动检测 cmux；需要关闭整个 cmux 集成时可以设置：
 
 ```bash
@@ -198,6 +210,7 @@ NapCat 的配置、插件和 QQ 登录数据会分别保存在：
 | `/audio <path>` 或 `/record <path>` | 发送独立语音消息；支持 `~`、相对路径、`file://` 和 Tab 补全 |
 | `/echo` | 在当前群聊最近 10 条消息中找到最新的重复消息并发送 |
 | `/reply <msgId>` | 设置当前会话的回复目标；消息头会显示可引用的 `#msgId` |
+| `/ui [classic\|qoder]` | 查看或切换终端 UI 风格，选择会持久化到 `~/.qq-cli/config.json` |
 | `/reload` | 重新加载登录信息、好友列表和群列表 |
 | `/help` | 打开帮助面板 |
 | `/exit`、`/quit` 或 `/q` | 正常退出 |

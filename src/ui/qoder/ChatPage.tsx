@@ -1,0 +1,145 @@
+import type { CompletionItem } from "../../completion.js";
+import { getComposerInputLayout } from "../../composer-layout.js";
+import React from "react";
+import { Box, useWindowSize } from "ink";
+import { useTerminalInfo } from "ink-picture";
+import type { ComposerPart } from "../../composer-draft.js";
+import type { ImageMode } from "../../config.js";
+import type {
+  ChatMessage,
+  Contact,
+  ImageSourceResolver,
+  InlineInsertItem,
+  MentionLabelLookup,
+  ReplyTarget,
+} from "../../types.js";
+import { getComposerRows, getComposerInputWidth, TERMINAL_GUTTER_ROWS } from "../layout.js";
+import { Composer } from "./Composer.js";
+import {
+  getMaxMessageScrollOffset,
+  MessageList,
+} from "./MessageList.js";
+import { useImageMetadataVersion } from "../ImagePreview.js";
+
+export interface ChatPageState {
+  session: Contact;
+  messages: ChatMessage[];
+  selfId: number;
+  scrollOffset: number;
+  imageMode: ImageMode;
+  messageGap: number;
+  connected: boolean;
+  statusMsg: string;
+  composerParts: ComposerPart[];
+  composerCursor: number;
+  replyTarget: ReplyTarget | null;
+  unreadTotal: number;
+  mentionTotal: number;
+  completionItems?: CompletionItem[];
+  completionHighlight?: number;
+  inlinePickerOpen: boolean;
+  inlinePickerQuery: string;
+  inlinePickerItems: InlineInsertItem[];
+  inlinePickerHighlight: number;
+  inlinePickerLoading: boolean;
+  mentionLabels: MentionLabelLookup;
+}
+
+interface ChatPageProps {
+  state: ChatPageState;
+  onInputChange: (parts: ComposerPart[], cursorOffset: number) => void;
+  onCursorChange: (cursorOffset: number) => void;
+  onSubmit: () => void;
+  onPaste: (value: string, cursorOffset: number) => boolean;
+  resolveImageSource?: ImageSourceResolver;
+}
+
+export function ChatPage({
+  state,
+  onInputChange,
+  onCursorChange,
+  onSubmit,
+  onPaste,
+  resolveImageSource,
+}: ChatPageProps) {
+  const { columns, rows } = useWindowSize();
+  const terminalInfo = useTerminalInfo();
+  useImageMetadataVersion();
+
+  const termWidth = columns || 80;
+  const termHeight = rows || 24;
+  const bodyRows = Math.max(
+    termHeight -
+      getComposerRows(state.inlinePickerOpen || Boolean(state.completionItems?.length), getComposerInputLayout(state.composerParts, state.composerCursor, getComposerInputWidth(termWidth, Boolean(state.replyTarget))).height) -
+      TERMINAL_GUTTER_ROWS,
+    1
+  );
+  const maxOffset = getMaxMessageScrollOffset(
+    state.messages,
+    bodyRows,
+    state.selfId,
+    termWidth,
+    terminalInfo.cellWidth,
+    terminalInfo.cellHeight,
+    state.imageMode,
+    state.messageGap,
+    false,
+    state.mentionLabels
+  );
+  const effectiveOffset = Math.min(Math.max(state.scrollOffset, 0), maxOffset);
+
+  return (
+    <Box flexDirection="column">
+      <Box
+        flexDirection="column"
+        height={bodyRows}
+        flexShrink={1}
+        overflow="hidden"
+      >
+        {state.messages.length > 0 ? (
+          <MessageList
+            messages={state.messages}
+            selfId={state.selfId}
+            activeSession={state.session}
+            termWidth={termWidth}
+            cellWidth={terminalInfo.cellWidth}
+            cellHeight={terminalInfo.cellHeight}
+            bodyRows={bodyRows}
+            imageMode={state.imageMode}
+            scrollOffset={effectiveOffset}
+            messageGap={state.messageGap}
+            mentionLabels={state.mentionLabels}
+            resolveImageSource={resolveImageSource}
+          />
+        ) : null}
+      </Box>
+
+      <Composer
+        onChange={onInputChange}
+        onSubmit={onSubmit}
+        onPaste={onPaste}
+        helpMode={false}
+        modalMode={false}
+        forwardMode={false}
+        activeSession={state.session}
+        statusMsg={state.statusMsg}
+        replyTarget={state.replyTarget}
+        connected={state.connected}
+        unreadTotal={state.unreadTotal}
+        mentionTotal={state.mentionTotal}
+        termWidth={termWidth}
+        parts={state.composerParts}
+        cursorOffset={state.composerCursor}
+        onCursorChange={onCursorChange}
+        imageMode={state.imageMode}
+        completionItems={state.completionItems}
+        completionHighlight={state.completionHighlight}
+        inlinePickerOpen={state.inlinePickerOpen}
+        inlinePickerQuery={state.inlinePickerQuery}
+        inlinePickerItems={state.inlinePickerItems}
+        inlinePickerHighlight={state.inlinePickerHighlight}
+        inlinePickerLoading={state.inlinePickerLoading}
+      />
+    </Box>
+  );
+}

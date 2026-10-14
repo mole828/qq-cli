@@ -52,6 +52,7 @@ import {
   getInitialImageMode,
   getInitialMessageGap,
   parseImageMode,
+  parseUiStyle,
 } from "./config.js";
 import {
   compactMessage,
@@ -66,19 +67,14 @@ import {
   ECHO_RECENT_MESSAGE_LIMIT,
   findEchoCandidate,
 } from "./echo.js";
-import { Composer } from "./ui/Composer.js";
-import { ChatPage } from "./ui/ChatPage.js";
-import { EmptyState } from "./ui/EmptyState.js";
-import { HelpPanel } from "./ui/HelpPanel.js";
+import { useUiKit } from "./ui/kit.js";
+import { useUiStyle } from "./ui/theme.js";
 import {
-  ForwardPanel,
   getForwardPanelMaxOffset,
   getForwardPanelScrollOffset,
   getForwardTargets,
-} from "./ui/ForwardPanel.js";
-import { COMPOSER_ROWS, getComposerRows, getComposerInputWidth, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
-import { SessionPicker } from "./ui/SessionPicker.js";
-import { FacePanel, getFacePanelLayout } from "./ui/FacePanel.js";
+} from "./forward-view.js";
+import { COMPOSER_ROWS, getComposerRows, getComposerInputWidth, getFacePanelLayout, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
 import {
   CustomFaceProvider,
   type StickerCapability,
@@ -87,9 +83,8 @@ import { CustomFaceCache } from "./face-cache.js";
 import {
   getMaxMessageScrollOffset,
   getMessageScrollRows,
-  MessageList,
   moveMessageScrollOffset,
-} from "./ui/MessageList.js";
+} from "./ui/message-metrics.js";
 import { useImageMetadataVersion } from "./ui/ImagePreview.js";
 import {
   buildInlineMentionItems,
@@ -207,6 +202,8 @@ export function App({ resumeSession = null, onSessionChange }: AppProps = {}) {
   const { columns, rows } = useWindowSize();
   const { exit } = useApp();
   const terminalInfo = useTerminalInfo();
+  const kit = useUiKit();
+  const { style: uiStyle, setStyle: setUiStyle } = useUiStyle();
   useImageMetadataVersion();
   const termWidth = columns || 80;
   const termHeight = rows || 24;
@@ -2030,6 +2027,20 @@ export function App({ resumeSession = null, onSessionChange }: AppProps = {}) {
         openForwardFrame(forwardId, false);
         break;
       }
+      case "/ui": {
+        const normalized = args.trim().toLowerCase();
+        const next = normalized
+          ? parseUiStyle(normalized)
+          : uiStyle === "classic" ? "qoder" : "classic";
+        setInputText("");
+        if (!next) {
+          setStatusMsg("Usage: /ui classic|qoder");
+          break;
+        }
+        setUiStyle(next);
+        setStatusMsg(`UI style ${next}`);
+        break;
+      }
       case "/reload":
         loadedRef.current = false;
         setInputText("");
@@ -2137,7 +2148,7 @@ export function App({ resumeSession = null, onSessionChange }: AppProps = {}) {
 
   if (!forwardView && !helpMode && !modalMode && !facesMode && activeSession) {
     return (
-      <ChatPage
+      <kit.ChatPage
         state={{
           session: activeSession,
           messages: activeMessages,
@@ -2179,7 +2190,7 @@ export function App({ resumeSession = null, onSessionChange }: AppProps = {}) {
         overflow="hidden"
       >
         {forwardView ? (
-          <ForwardPanel
+          <kit.ForwardPanel
             forwardId={forwardView.id}
             nodes={forwardView.nodes}
             loading={forwardView.loading}
@@ -2199,9 +2210,9 @@ export function App({ resumeSession = null, onSessionChange }: AppProps = {}) {
             resolveImageSource={resolveImageSource}
           />
         ) : helpMode ? (
-          <HelpPanel />
+          <kit.HelpPanel />
         ) : modalMode ? (
-          <SessionPicker
+          <kit.SessionPicker
             contacts={filteredContacts}
             highlightIndex={modalHighlight}
             scrollOffset={modalScrollOff}
@@ -2215,7 +2226,7 @@ export function App({ resumeSession = null, onSessionChange }: AppProps = {}) {
             mentionTotal={mentionTotal}
           />
         ) : facesMode ? (
-          <FacePanel
+          <kit.FacePanel
             items={customFaces}
             capability={faceCapability}
             loading={facesLoading}
@@ -2230,13 +2241,13 @@ export function App({ resumeSession = null, onSessionChange }: AppProps = {}) {
             resolveImageSource={resolveImageSource}
           />
         ) : !activeSession ? (
-          <EmptyState
+          <kit.EmptyState
             activeSession={activeSession}
             connected={connected}
             termWidth={termWidth}
           />
         ) : activeMessages.length > 0 ? (
-          <MessageList
+          <kit.MessageList
             messages={activeMessages}
             selfId={selfId}
             activeSession={activeSession}
@@ -2253,7 +2264,7 @@ export function App({ resumeSession = null, onSessionChange }: AppProps = {}) {
         ) : null}
       </Box>
 
-      <Composer
+      <kit.Composer
         parts={composerParts}
         cursorOffset={composerCursor}
         onChange={handleInputChange}

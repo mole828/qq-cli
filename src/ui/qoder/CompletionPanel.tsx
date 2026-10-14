@@ -1,8 +1,9 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { CompletionItem } from "../completion.js";
-import { textWidth, truncateCells } from "../terminal-text.js";
-import { INLINE_PICKER_ROWS } from "./layout.js";
+import type { CompletionItem } from "../../completion.js";
+import { textWidth, truncateCells } from "../../terminal-text.js";
+import { INLINE_PICKER_ROWS } from "../layout.js";
+import { ACCENT, PROMPT_GLYPH } from "./palette.js";
 
 export function CompletionPanel({ items, highlight, width, enterExecutes = false }: {
   items: CompletionItem[]; highlight: number; width: number; enterExecutes?: boolean;
@@ -15,14 +16,14 @@ export function CompletionPanel({ items, highlight, width, enterExecutes = false
       {Array.from({ length: visibleCount }, (_, row) => {
         const index = offset + row;
         const item = items[index];
-        const label = item ? `${index === selected ? "›" : " "} ${item.label.replace(/\s+/g, " ")}` : " ";
+        const label = item ? `${index === selected ? PROMPT_GLYPH : " "} ${item.label.replace(/\s+/g, " ")}` : " ";
         const title = truncateCells(label, width);
         const hintWidth = width - textWidth(title) - 3;
         const hint = item?.description && hintWidth >= 4
           ? truncateCells(item.description, hintWidth) : "";
         return (
           <Box key={row} height={1} overflow="hidden">
-            <Text bold={index === selected} dimColor={index !== selected} wrap="truncate-end">{title}</Text>
+            <Text color={index === selected ? ACCENT : undefined} bold={index === selected} dimColor={index !== selected} wrap="truncate-end">{title}</Text>
             {hint && <Text dimColor wrap="truncate-end">{` · ${hint}`}</Text>}
           </Box>
         );

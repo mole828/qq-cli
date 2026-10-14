@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { Contact } from "../types.js";
-import { truncateCells } from "../terminal-text.js";
+import type { Contact } from "../../types.js";
+import { truncateCells } from "../../terminal-text.js";
 
 interface EmptyStateProps {
   activeSession: Contact | null;

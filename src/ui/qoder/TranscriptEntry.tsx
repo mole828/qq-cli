@@ -1,10 +1,11 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { ImageMode } from "../config.js";
-import { compactMessage, getImageReferences } from "../message-format.js";
-import { linkifyUrls } from "../terminal-text.js";
-import type { ChatMessage } from "../types.js";
-import { ImageStrip } from "./ImageStrip.js";
+import type { ImageMode } from "../../config.js";
+import { compactMessage, getImageReferences } from "../../message-format.js";
+import { linkifyUrls } from "../../terminal-text.js";
+import type { ChatMessage } from "../../types.js";
+import { ImageStrip } from "../ImageStrip.js";
+import { ACCENT, PROMPT_GLYPH } from "./palette.js";
 
 export interface TranscriptEntry {
   key: string;
@@ -55,10 +56,10 @@ export function TranscriptEntryView({
         marginBottom={1}
         paddingX={1}
         width={Math.max(termWidth - 2, 12)}
-        backgroundColor="#3a3a3a"
+
       >
-        <Text backgroundColor="#3a3a3a" wrap="wrap">
-          <Text bold>› </Text>
+        <Text  wrap="wrap">
+          <Text bold color={ACCENT}>{`${PROMPT_GLYPH} `}</Text>
           {linkedContent}
         </Text>
         {imageReferences.length > 0 && (

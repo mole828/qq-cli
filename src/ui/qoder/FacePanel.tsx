@@ -1,0 +1,195 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { Box, Text } from "ink";
+import type { ImageSourceResolver, StickerItem } from "../../types.js";
+import { truncateCells } from "../../terminal-text.js";
+import { getFacePanelLayout } from "../layout.js";
+import { ImagePreview, usePinnedImageSources } from "../ImagePreview.js";
+import { ACCENT } from "./palette.js";
+
+const PANEL_PADDING = 2;
+const SELECTED_PREVIEW_ROWS = 5;
+const SLOT_HEIGHT = 5;
+const MIN_SLOT_WIDTH = 16;
+const LOADING_FRAMES = ["|", "/", "-", "\\"];
+
+export { getFacePanelLayout } from "../layout.js";
+
+interface FacePanelProps {
+  items: StickerItem[];
+  capability: "unknown" | "supported" | "unsupported";
+  loading: boolean;
+  loadPhase: "idle" | "clearing" | "requesting" | "caching";
+  requestedCount: number;
+  cacheReady: boolean;
+  highlightIndex: number;
+  scrollOffset: number;
+  bodyRows: number;
+  termWidth: number;
+  statusMsg: string;
+  resolveImageSource?: ImageSourceResolver;
+}
+
+export function FacePanel({
+  items,
+  capability,
+  loading,
+  loadPhase,
+  requestedCount,
+  cacheReady,
+  highlightIndex,
+  scrollOffset,
+  bodyRows,
+  termWidth,
+  statusMsg,
+  resolveImageSource,
+}: FacePanelProps) {
+  const [loadingFrame, setLoadingFrame] = useState(0);
+  const layout = getFacePanelLayout(bodyRows, termWidth);
+  const pinnedSources = useMemo(
+    () => items.map((item) => item.file),
+    [items]
+  );
+  usePinnedImageSources(pinnedSources);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingFrame(0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setLoadingFrame((current) => (current + 1) % LOADING_FRAMES.length);
+    }, 120);
+    return () => clearInterval(timer);
+  }, [loading]);
+
+  const selected = items[highlightIndex];
+  const visibleItems = items.slice(
+    scrollOffset,
+    scrollOffset + layout.visibleCount
+  );
+  const panelWidth = Math.max(termWidth - PANEL_PADDING, MIN_SLOT_WIDTH);
+
+  return (
+    <Box
+      flexDirection="column"
+      height={bodyRows}
+      paddingX={1}
+      overflow="hidden"
+    >
+      <Box height={1} justifyContent="space-between" overflow="hidden">
+        <Text bold>· Faces · custom</Text>
+        <Text dimColor wrap="truncate-end">
+          {loading
+            ? `${LOADING_FRAMES[loadingFrame]} loading…`
+            : capability === "supported"
+            ? `${items.length} indexed${cacheReady ? " · tmp" : ""}`
+            : capability === "unsupported"
+            ? "extension unavailable"
+            : "not checked"}
+        </Text>
+      </Box>
+      <Box height={1} overflow="hidden">
+        <Text dimColor>
+          Esc close · arrows select · Enter add · r refresh
+        </Text>
+      </Box>
+      <Box height={1} overflow="hidden">
+        <Text color="gray" wrap="truncate-end">
+          {truncateCells(
+            statusMsg || "NapCat custom-face extension is detected on demand.",
+            Math.max(panelWidth, 1)
+          )}
+        </Text>
+      </Box>
+
+      {loading ? (
+        <Box flexDirection="column" paddingTop={1}>
+          <Text color="yellow">
+            {LOADING_FRAMES[loadingFrame]} {loadPhase === "clearing"
+              ? "Clearing face cache…"
+              : loadPhase === "caching"
+              ? "Writing full face index to temporary storage…"
+              : "Loading full face index from adapter…"}
+          </Text>
+          <Text dimColor>
+            Up to {requestedCount} faces · thumbnails load as pages are viewed
+          </Text>
+        </Box>
+      ) : capability === "unsupported" ? (
+        <Box flexDirection="column" paddingTop={1}>
+          <Text color="yellow">Custom faces are unavailable on this adapter.</Text>
+          <Text dimColor>
+            Use Cmd+V / Ctrl+V or configure QQ_CLI_CUSTOM_FACE_ACTION.
+          </Text>
+        </Box>
+      ) : capability === "supported" && items.length === 0 ? (
+        <Box paddingTop={1}>
+          <Text dimColor>No custom faces returned by the adapter.</Text>
+        </Box>
+      ) : selected ? (
+        <>
+          <Box height={SELECTED_PREVIEW_ROWS} overflow="hidden" paddingTop={1}>
+            <Box width={32} height={SELECTED_PREVIEW_ROWS - 1} overflow="hidden">
+              <ImagePreview
+                source={selected.file}
+                height={SELECTED_PREVIEW_ROWS - 1}
+                maxWidth={28}
+                resolveSource={resolveImageSource}
+              />
+            </Box>
+            <Box flexDirection="column" paddingLeft={1} overflow="hidden">
+              <Text color={ACCENT} bold>
+                #{highlightIndex + 1} selected
+              </Text>
+              <Text dimColor wrap="truncate-end">
+                {truncateCells(selected.file, Math.max(panelWidth - 34, 12))}
+              </Text>
+              <Text dimColor>Enter adds this face to the composer.</Text>
+            </Box>
+          </Box>
+          <Box
+            height={layout.gridHeight}
+            flexDirection="column"
+            overflow="hidden"
+          >
+            {Array.from({ length: layout.rows }, (_, rowIndex) => (
+              <Box key={rowIndex} height={SLOT_HEIGHT} flexDirection="row">
+                {visibleItems
+                  .slice(rowIndex * layout.columns, (rowIndex + 1) * layout.columns)
+                  .map((item, columnIndex) => {
+                    const index = scrollOffset + rowIndex * layout.columns + columnIndex;
+                    const highlighted = index === highlightIndex;
+                    return (
+                      <Box
+                        key={item.id}
+                        width={layout.slotWidth}
+                        height={SLOT_HEIGHT}
+                        flexDirection="column"
+                        overflow="hidden"
+                      >
+                        <Text color={ACCENT} bold>
+                          {highlighted ? ">" : " "} #{index + 1}
+                        </Text>
+                        <ImagePreview
+                          source={item.file}
+                          height={SLOT_HEIGHT - 1}
+                          maxWidth={layout.slotWidth - 1}
+                          clipped
+                          resolveSource={resolveImageSource}
+                        />
+                      </Box>
+                    );
+                  })}
+              </Box>
+            ))}
+          </Box>
+        </>
+      ) : (
+        <Box paddingTop={1}>
+          <Text dimColor>Waiting for a connected adapter.</Text>
+        </Box>
+      )}
+    </Box>
+  );
+}

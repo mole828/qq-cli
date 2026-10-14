@@ -1,6 +1,20 @@
 export type ImageMode = "off" | "inline";
+export type UiStyle = "classic" | "qoder";
 
 const DEFAULT_MESSAGE_GAP = 0;
+
+export function parseUiStyle(value: string | undefined): UiStyle | null {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "classic" || normalized === "qoder") {
+    return normalized;
+  }
+
+  return null;
+}
+
+export function getInitialUiStyle(): UiStyle {
+  return parseUiStyle(process.env.QQ_CLI_UI) ?? "classic";
+}
 
 export function parseImageMode(value: string | undefined): ImageMode {
   const normalized = value?.trim().toLowerCase();

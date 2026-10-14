@@ -26,3 +26,43 @@ export function getComposerInputWidth(termWidth: number, hasReply = false) {
   const replyWidth = hasReply ? textWidth("[reply] ") : 0;
   return Math.max(boxWidth - innerPadding - promptWidth - replyWidth, 1);
 }
+
+const FACE_PANEL_PADDING = 2;
+const FACE_PANEL_HEADER_ROWS = 3;
+const FACE_PANEL_SELECTED_PREVIEW_ROWS = 5;
+const FACE_PANEL_SLOT_HEIGHT = 5;
+const FACE_PANEL_MIN_SLOT_WIDTH = 16;
+const FACE_PANEL_MAX_SLOT_WIDTH = 26;
+
+export interface FacePanelLayout {
+  columns: number;
+  rows: number;
+  visibleCount: number;
+  slotWidth: number;
+  gridHeight: number;
+}
+
+export function getFacePanelLayout(
+  bodyRows: number,
+  termWidth: number
+): FacePanelLayout {
+  const panelWidth = Math.max(termWidth - FACE_PANEL_PADDING, FACE_PANEL_MIN_SLOT_WIDTH);
+  const slotWidth = Math.min(
+    FACE_PANEL_MAX_SLOT_WIDTH,
+    Math.max(Math.floor(panelWidth / 4), FACE_PANEL_MIN_SLOT_WIDTH)
+  );
+  const columns = Math.max(Math.floor(panelWidth / slotWidth), 1);
+  const gridHeight = Math.max(
+    bodyRows - FACE_PANEL_HEADER_ROWS - FACE_PANEL_SELECTED_PREVIEW_ROWS,
+    FACE_PANEL_SLOT_HEIGHT
+  );
+  const rows = Math.max(Math.floor(gridHeight / FACE_PANEL_SLOT_HEIGHT), 1);
+
+  return {
+    columns,
+    rows,
+    visibleCount: columns * rows,
+    slotWidth,
+    gridHeight: rows * FACE_PANEL_SLOT_HEIGHT,
+  };
+}

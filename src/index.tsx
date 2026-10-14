@@ -9,6 +9,8 @@ import { getInitialImageMode, parseImageMode, parseMessageGap } from "./config.j
 import { HistoryApp } from "./HistoryApp.js";
 import { readChatHistory } from "./history-file.js";
 import { RestartOnResume } from "./RestartOnResume.js";
+import { resolveUiStyle, ThemeProvider } from "./ui/theme.js";
+import { readUiStyleConfig } from "./ui-config.js";
 
 interface TerminalInfoSample {
   info: TerminalInfo;
@@ -71,23 +73,30 @@ const imageMode = imageModeArgument
 const messageGap = parseMessageGap(
   getOption("--message-gap") ?? process.env.QQ_CLI_MESSAGE_GAP
 );
+const uiStyle = resolveUiStyle(
+  getOption("--ui"),
+  process.env.QQ_CLI_UI,
+  readUiStyleConfig()
+);
 const history = historyPath ? await readChatHistory(historyPath) : null;
 
 render(
-  <RestartOnResume>
-    {(resumeSession, onSessionChange) => (
-      <ResponsivePictureProvider>
-        {history ? (
-          <HistoryApp
-            history={history}
-            initialOffset={initialOffset}
-            initialImageMode={imageMode}
-            messageGap={messageGap}
-          />
-        ) : (
-          <App resumeSession={resumeSession} onSessionChange={onSessionChange} />
-        )}
-      </ResponsivePictureProvider>
-    )}
-  </RestartOnResume>
+  <ThemeProvider initialStyle={uiStyle}>
+    <RestartOnResume>
+      {(resumeSession, onSessionChange) => (
+        <ResponsivePictureProvider>
+          {history ? (
+            <HistoryApp
+              history={history}
+              initialOffset={initialOffset}
+              initialImageMode={imageMode}
+              messageGap={messageGap}
+            />
+          ) : (
+            <App resumeSession={resumeSession} onSessionChange={onSessionChange} />
+          )}
+        </ResponsivePictureProvider>
+      )}
+    </RestartOnResume>
+  </ThemeProvider>
 );

@@ -4,12 +4,12 @@ import { emptyComposerParts } from "./composer-draft.js";
 import { useTerminalInfo } from "ink-picture";
 import type { ImageMode } from "./config.js";
 import type { SavedChatHistory } from "./history-file.js";
-import { ChatPage } from "./ui/ChatPage.js";
+import { useUiKit } from "./ui/kit.js";
 import { COMPOSER_ROWS, TERMINAL_GUTTER_ROWS } from "./ui/layout.js";
 import {
   getMaxMessageScrollOffset,
   moveMessageScrollOffset,
-} from "./ui/MessageList.js";
+} from "./ui/message-metrics.js";
 
 interface HistoryAppProps {
   history: SavedChatHistory;
@@ -27,6 +27,7 @@ export function HistoryApp({
   const { exit } = useApp();
   const { columns, rows } = useWindowSize();
   const terminalInfo = useTerminalInfo();
+  const kit = useUiKit();
   const [scrollOffset, setScrollOffset] = useState(initialOffset);
   const [imageMode, setImageMode] = useState(initialImageMode);
   const termWidth = columns || 80;
@@ -87,7 +88,7 @@ export function HistoryApp({
   });
 
   return (
-    <ChatPage
+    <kit.ChatPage
       state={{
         session: history.contact,
         messages: history.messages,
